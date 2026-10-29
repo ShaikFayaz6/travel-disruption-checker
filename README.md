@@ -243,8 +243,24 @@ The AI (Google Gemini) has two jobs, and does both in **one** request:
 
 ## Speed
 
-- **Results appear in about 1 to 2 seconds.** The page shows the full result from the rules first: the route, the rating and the evidence. A small note says the AI summary is on its way, and it replaces the rule-based summary, usually 1 to 3 seconds later (sometimes longer when Google is busy). (The AI used to take up to 27 seconds; see the AI section above for what changed.)
+**Why it can be slow:** the wait comes from the outside services, all on free tiers. The app's own work takes under a second. Measured on the live site:
+
+| Service | Answer time | Why |
+|---|---|---|
+| Gemini AI | 5–25 s | Free-tier queue: about 9 s before the first word, then 0.5 s to write the answer |
+| AviationWeather.gov | up to 10 s | Slow at times |
+| Google News, GDELT | timeouts | Often don't answer cloud servers |
+| Weather, NWS, FAA | under 1 s | |
+
+Paid tiers would remove most of this wait. For a free-tier project, we think it is acceptable.
+
+**How we keep the wait short:**
+- **The result appears first, in about 3 s.** The rules' rating and evidence show first; the AI summary replaces them when ready.
+- **Slow sources get 3 s.** AviationWeather.gov and news don't hold up the result past 3 s; anything later still reaches the AI. On the live site this took the first result from 9.2 s to 3.4 s.
+- **All sources are asked at once.** Failed sources are skipped for 10 minutes.
+- **The AI's work is kept small.** One AI request does both jobs, with no "thinking" time, and the prompt is 30% smaller. Full-quota models are skipped.
 - **Data is cached** for a few minutes (news 10 minutes, forecasts 30 minutes), so checking the same trip again is almost instant.
+- **We tested streaming the AI text and didn't use it.** It would only save about 0.4 s, because writing isn't the slow part.
 - **Speed report.** Every check prints a table showing how long each data source took: when it started, how long until the first answer, the full time, and whether it came from the cache.
   - **On your computer:** it appears in the backend terminal.
   - **In the browser:** the same table is in the developer console (press F12 and look for `[Trip Check]`).
