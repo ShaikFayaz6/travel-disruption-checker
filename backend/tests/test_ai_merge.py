@@ -88,6 +88,65 @@ def test_combined_call_failing_falls_back_to_keyword_news_and_the_summary_call(t
     assert all("keyword-matched" in s.detail for s in res.signals if s.category == "news")
 
 
+@pytest.fixture
+def slow_avwx(monkeypatch):
+    """AviationWeather.gov answers after the first answer's wait; its TAF gives one signal."""
+    from app.models import Signal
+
+    async def slow_fetch(kind, icaos):
+        await asyncio.sleep(0.3)
+        return [{"icaoId": icaos[0]}]
+
+    taf = Signal(id="taf-JFK", source="AviationWeather.gov", category="aviation_weather", side="origin",
+                 location="JFK", severity=1, title="IFR forecast", detail="d")
+    monkeypatch.setattr(assess_mod, "AVWX_FIRST_WAIT_S", 0.05)
+    monkeypatch.setattr(assess_mod.aviationweather, "fetch", slow_fetch)
+    monkeypatch.setattr(assess_mod.aviationweather, "evaluate_tafs",
+                        lambda tafs, aps, *, side, window: [taf] if side == "origin" else [])
+    return AssessRequest(origin="New York, NY", destination="San Francisco, CA",
+                         date=date.today() + timedelta(days=1), time="08:00", mode="fly")
+
+
+def answers(req):
+    async def run():
+        return [r async for r in assess_mod.assess_stream(req)]
+    return asyncio.run(run())
+
+
+def test_first_answer_doesnt_wait_for_slow_aviation_weather_but_the_ai_gets_it(trip, slow_avwx, monkeypatch):
+    seen = []
+
+    async def both(context, signals, trip, articles):
+        seen.extend(s.id for s in signals)
+        return [], text("one call")
+
+    trip([])  # sets up the AI stubs
+    monkeypatch.setattr(ai, "assess_with_news", both)
+    first, final = answers(slow_avwx)
+    taf_status = lambda r: next(s for s in r.sources if s.name == "AviationWeather.gov TAF")  # noqa: E731
+    assert "taf-JFK" not in [s.id for s in first.signals] and taf_status(first).status == "skipped"
+    assert "taf-JFK" in [s.id for s in final.signals] and taf_status(final).status == "ok"
+    assert "taf-JFK" in seen  # the AI wrote from it
+
+
+def test_without_the_ai_the_only_answer_waits_for_aviation_weather(slow_avwx, monkeypatch):
+    monkeypatch.setattr(ai, "GEMINI_API_KEY", "")
+    [only] = answers(slow_avwx)
+    assert "taf-JFK" in [s.id for s in only.signals]
+
+
+def test_prompt_is_compact_and_keeps_background_evidence_short():
+    from app.models import Signal
+    bg = Signal(id="metar-JFK", source="AviationWeather.gov", category="aviation_weather", side="origin",
+                location="JFK", severity=0, title="Clear now", detail="long detail", applies_to_travel_date=False)
+    key = Signal(id="om-o", source="Open-Meteo", category="weather", side="origin", location="JFK", severity=0,
+                 title="Dry", detail="the hours you're there", valid_for="8-10 AM")
+    ctx = {"risk_level": "low", "source_status": [{"name": "A", "status": "ok"}, {"name": "B", "status": "error"}]}
+    p = ai._prompt(ctx, [bg, key])
+    assert "\n " not in p and '"name":"A"' not in p and '"name":"B"' in p  # no indents; working sources left out
+    assert "long detail" not in p and "the hours you're there" in p and "8-10 AM" in p
+
+
 def test_parse_combined_answer_checks_citations():
     from app.models import Signal
     sig = Signal(id="om-o", source="Open-Meteo", category="weather", side="origin", location="JFK", severity=1,

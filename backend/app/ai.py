@@ -241,15 +241,25 @@ At most 3 actions. If there are no meaningful risks, return an empty risks list 
 
 
 def _evidence_payload(signals: list[Signal]) -> list[dict]:
-    return [{"id": s.id, "source": s.source, "side": s.side, "location": s.location,
-             "severity": s.severity, "applies_to_travel_date": s.applies_to_travel_date,
-             "title": s.title, "detail": s.detail[:500], "valid_for": s.valid_for,
-             "observed_at": s.observed_at} for s in signals]
+    """Each item in full, except background (severity 0, not for the travel date): its title says enough."""
+    out = []
+    for s in signals:
+        item = {"id": s.id, "source": s.source, "side": s.side, "location": s.location,
+                "severity": s.severity, "applies_to_travel_date": s.applies_to_travel_date, "title": s.title}
+        if s.severity or s.applies_to_travel_date:
+            item |= {"detail": s.detail[:500], "valid_for": s.valid_for, "observed_at": s.observed_at}
+        out.append({k: v for k, v in item.items() if v is not None})
+    return out
+
+
+def _json(data) -> str:
+    return json.dumps(data, separators=(",", ":"), default=str)
 
 
 def _prompt(context: dict, signals: list[Signal]) -> str:
-    return ("Trip context:\n" + json.dumps(context, indent=1, default=str) +
-            "\n\nEvidence:\n" + json.dumps(_evidence_payload(signals), indent=1, default=str))
+    # the AI only mentions sources that didn't answer, so the ones that did are left out
+    context = {**context, "source_status": [s for s in context.get("source_status", []) if s.get("status") != "ok"]}
+    return "Trip context:\n" + _json(context) + "\n\nEvidence:\n" + _json(_evidence_payload(signals))
 
 
 async def synthesize(context: dict, signals: list[Signal]) -> Assessment:
