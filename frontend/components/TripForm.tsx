@@ -177,7 +177,7 @@ export function TripForm({
         </label>
         <div className="field field-time">
           <label htmlFor="dep-time">Leave at</label>
-          <input id="dep-time" type="time" step={900} value={value.time} onChange={(e) => {
+          <input id="dep-time" type="time" step={60} value={value.time} onChange={(e) => {
               onChange({ ...value, time: e.target.value, legs: [] });
               setTimeError(null);
             }}
