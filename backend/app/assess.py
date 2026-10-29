@@ -563,7 +563,8 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
                     id=f"news-{item['index']}", source=news_source, category="news", side="national",
                     location=a.get("domain") or "news", severity=item["severity"],
                     title=a["title"][:200], detail=f"{item['reason']} ({method}; source: {a.get('domain')})",
-                    observed_at=a.get("seendate"), valid_for="last 3 days of coverage", url=a.get("url"),
+                    observed_at=a.get("seendate"), valid_for="last 3 days of coverage",
+                    url=a["url"] if str(a.get("url", "")).startswith(("https://", "http://")) else None,
                 ))
             return out
 
