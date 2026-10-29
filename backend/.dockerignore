@@ -1,6 +1,7 @@
 # keys stay out of the image: docker-compose.yml passes .env in at runtime
 .env
 .venv/
+venv/
 data/
 __pycache__/
 **/__pycache__/

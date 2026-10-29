@@ -256,7 +256,10 @@ export async function assessTrip(body: {
   const t0 = performance.now();
   // progressive results: one JSON answer per line, the quick rules-only one first (ai_pending),
   // then the AI's. onUpdate gets each; the promise resolves with the last.
-  const res = await fetch("/api/assess/stream", {
+  // NEXT_PUBLIC_STREAM_URL (e.g. https://your-api.onrender.com): the stream goes straight to the backend,
+  // since a proxy in between (Vercel's /api rewrite) can hold the lines back until the AI's answer is in.
+  // Unset: the same-origin /api proxy, as in development and docker compose.
+  const res = await fetch(`${process.env.NEXT_PUBLIC_STREAM_URL ?? ""}/api/assess/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     // empty time = check the whole day; no legs = estimate the flight. display_tz: the date and time

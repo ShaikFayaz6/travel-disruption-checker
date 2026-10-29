@@ -1,6 +1,7 @@
 node_modules/
 .next/
 .venv/
+venv/
 *.tsbuildinfo
 next-env.d.ts
 Dockerfile
