@@ -89,6 +89,23 @@ def stub(monkeypatch, tmp_path):
     monkeypatch.setattr(places, "_cities", [])  # empty city index: geocode falls through to the stubbed API
     monkeypatch.setattr(places, "_by_key", {})
     monkeypatch.setattr(ai, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(assess_mod, "_news_down", {})  # one test's news outage doesn't skip news in the next
+
+
+def test_failed_news_source_is_skipped_next_time(monkeypatch):
+    calls = []
+
+    async def google_down(*a, **k):
+        calls.append(1)
+        raise ConnectionError("down")
+
+    monkeypatch.setattr(assess_mod.news, "google_search", google_down)
+    req = AssessRequest(origin="New York, NY", destination="SFO", date=date.today() + timedelta(days=1))
+    asyncio.run(assess_mod.assess(req))
+    res = asyncio.run(assess_mod.assess(req))
+    assert len(calls) == 1  # not retried within the cooldown
+    names = {s.name: s.status for s in res.sources}
+    assert names["Google News"] == "skipped" and names["GDELT news"] == "ok"
 
 
 def test_fly_pipeline():

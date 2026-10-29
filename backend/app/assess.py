@@ -157,14 +157,30 @@ def _check_no_flying_past(dest: Place, conn_aps: list, final, legs: list[FlightL
                             f"after {ap.iata}, or check the destination.")
 
 
+NEWS_COOLDOWN_S = 600  # a source that failed is skipped this long (cloud hosts often get 503s or no answer)
+_news_down: dict[str, float] = {}  # source -> time.monotonic() when it can be tried again
+
+
+async def _news_source(tr: _Tracker, name: str, coro: Awaitable[list[dict]]) -> list[dict] | None:
+    """The first answer waits on news: a source that just failed isn't tried again on every check."""
+    if _news_down.get(name, 0) > time.monotonic():
+        coro.close()
+        tr.skip(name, "Didn't answer on a recent check; skipped for a few minutes")
+        return None
+    articles = await tr.run(name, coro)
+    if articles is None:
+        _news_down[name] = time.monotonic() + NEWS_COOLDOWN_S
+    return articles
+
+
 async def _news(tr: _Tracker, origin: Place, dest: Place, origin_aps: list, dest_aps: list):
     """Google News first; GDELT only if Google fails (GDELT's rate limit is strict)."""
     cities = [origin.name.split(",")[0], dest.name.split(",")[0]]
-    articles = await tr.run("Google News", news.google_search(origin_aps, dest_aps, cities))
+    articles = await _news_source(tr, "Google News", news.google_search(origin_aps, dest_aps, cities))
     if articles is not None:
         tr.skip("GDELT news", "Backup news source; Google News answered")
         return articles, "Google News"
-    articles = await tr.run("GDELT news", news.search(origin, dest, origin_aps, dest_aps))
+    articles = await _news_source(tr, "GDELT news", news.search(origin, dest, origin_aps, dest_aps))
     return (articles, "GDELT news") if articles is not None else None
 
 

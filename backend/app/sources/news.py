@@ -65,6 +65,7 @@ def query_rejected(err: Exception) -> bool:
     return "too short or too long" in str(err)
 
 
+NEWS_TIMEOUT_S = 4  # news is one signal among many and the first answer waits on it: give up quickly
 MIN_INTERVAL_S = 6  # GDELT allows one request per 5 seconds; a little margin
 _gate = asyncio.Lock()
 _last_call = 0.0
@@ -82,7 +83,7 @@ async def fetch(query: str, *, timespan: str = "3d", max_records: int = 25) -> l
                 "timespan": timespan, "sort": "DateDesc",
             # fail fast: news is one signal among many, so a slow or rate-limited GDELT
             # shows as "Unavailable" instead of holding up the whole assessment
-            }, as_json=False, ttl=600, timeout=8, retries=0)
+            }, as_json=False, ttl=600, timeout=NEWS_TIMEOUT_S, retries=0)
         finally:
             _last_call = time.monotonic()
     try:
@@ -176,7 +177,7 @@ MAX_AGE = timedelta(days=3)
 async def google_search(origin_aps: list[Airport], dest_aps: list[Airport], cities: list[str]) -> list[dict]:
     text = await http.get(GOOGLE_URL, params={"q": google_query(origin_aps, dest_aps, cities), "hl": "en-US",
                                               "gl": "US", "ceid": "US:en"},
-                          as_json=False, ttl=600, timeout=8, retries=0)
+                          as_json=False, ttl=600, timeout=NEWS_TIMEOUT_S, retries=0)
     # Google doesn't reliably honour when:3d, so old stories are dropped here
     cutoff = (datetime.now(timezone.utc) - MAX_AGE).isoformat()
     return [a for a in parse_google_rss(text) if a["seendate"] and a["seendate"] >= cutoff]
