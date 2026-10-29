@@ -99,7 +99,7 @@ def slow_avwx(monkeypatch):
 
     taf = Signal(id="taf-JFK", source="AviationWeather.gov", category="aviation_weather", side="origin",
                  location="JFK", severity=1, title="IFR forecast", detail="d")
-    monkeypatch.setattr(assess_mod, "AVWX_FIRST_WAIT_S", 0.05)
+    monkeypatch.setattr(assess_mod, "FIRST_ANSWER_WAIT_S", 0.05)
     monkeypatch.setattr(assess_mod.aviationweather, "fetch", slow_fetch)
     monkeypatch.setattr(assess_mod.aviationweather, "evaluate_tafs",
                         lambda tafs, aps, *, side, window: [taf] if side == "origin" else [])
@@ -127,6 +127,31 @@ def test_first_answer_doesnt_wait_for_slow_aviation_weather_but_the_ai_gets_it(t
     assert "taf-JFK" not in [s.id for s in first.signals] and taf_status(first).status == "skipped"
     assert "taf-JFK" in [s.id for s in final.signals] and taf_status(final).status == "ok"
     assert "taf-JFK" in seen  # the AI wrote from it
+
+
+def test_first_answer_doesnt_wait_for_slow_news_but_the_ai_gets_it(trip, monkeypatch):
+    got = []
+
+    async def slow_news(tr, *args):
+        await asyncio.sleep(0.3)
+        tr.calls["Google News"] = [(True, 300, "")]
+        return ARTICLES, "Google News"
+
+    async def both(context, signals, trip, articles):
+        got.append(articles)
+        return [{"index": 1, "severity": 1, "reason": "Ground stop at JFK"}], text("one call")
+
+    trip([])  # sets up the AI stubs
+    monkeypatch.setattr(assess_mod, "FIRST_ANSWER_WAIT_S", 0.05)
+    monkeypatch.setattr(assess_mod, "_news", slow_news)
+    monkeypatch.setattr(ai, "assess_with_news", both)
+    first, final = answers(AssessRequest(origin="New York, NY", destination="San Francisco, CA",
+                                         date=date.today() + timedelta(days=1), time="08:00", mode="fly"))
+    google = lambda r: next(s for s in r.sources if s.name == "Google News")  # noqa: E731
+    assert google(first).status == "skipped" and "Still loading" in google(first).detail
+    assert not [s for s in first.signals if s.category == "news"]
+    assert got == [ARTICLES] and google(final).status == "ok"  # the AI judged the headlines that came late
+    assert [s.id for s in final.signals if s.category == "news"] == ["news-1"]
 
 
 def test_without_the_ai_the_only_answer_waits_for_aviation_weather(slow_avwx, monkeypatch):

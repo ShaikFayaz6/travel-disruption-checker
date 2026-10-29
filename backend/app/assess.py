@@ -32,7 +32,7 @@ SOURCE_URLS = {
 
 
 MAX_AIRPORT_MILES = 150  # flights must start and end this close to the origin and destination
-AVWX_FIRST_WAIT_S = 3.0  # the quick first answer waits this long for AviationWeather.gov; the AI's answer has it all
+FIRST_ANSWER_WAIT_S = 3.0  # the quick first answer waits this long for the slow sources; the AI's answer has them all
 
 
 def valid_tz(name: str | None) -> str | None:
@@ -163,7 +163,7 @@ _news_down: dict[str, float] = {}  # source -> time.monotonic() when it can be t
 
 
 async def _news_source(tr: _Tracker, name: str, coro: Awaitable[list[dict]]) -> list[dict] | None:
-    """The first answer waits on news: a source that just failed isn't tried again on every check."""
+    """A source that just failed isn't tried again on every check."""
     if _news_down.get(name, 0) > time.monotonic():
         coro.close()
         tr.skip(name, "Didn't answer on a recent check; skipped for a few minutes")
@@ -435,11 +435,12 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
     icaos = [a.icao for a in origin_aps + conn_aps + dest_aps if a.icao]
     taf_range = hours <= 30 if plan.timed else days_out <= 1
     obs_matter = hours <= 6 if plan.timed else days_out == 0  # current conditions only matter if leaving soon
-    # AviationWeather.gov can take 10 s: started here, but with the AI on the first answer doesn't wait for it
-    avwx: dict[str, asyncio.Task] = {}
+    # Slow sources (AviationWeather.gov can take 10 s; news from a cloud host 8 s when both sources time out):
+    # started here, but with the AI on the first answer waits for them only FIRST_ANSWER_WAIT_S
+    slow: dict[str, asyncio.Task] = {}
     if mode == "fly" and taf_range:
-        avwx["taf"] = asyncio.create_task(tr.run("AviationWeather.gov TAF", aviationweather.fetch("taf", icaos)))
-        avwx["metar"] = asyncio.create_task(tr.run("AviationWeather.gov METAR", aviationweather.fetch("metar", icaos)))
+        slow["taf"] = asyncio.create_task(tr.run("AviationWeather.gov TAF", aviationweather.fetch("taf", icaos)))
+        slow["metar"] = asyncio.create_task(tr.run("AviationWeather.gov METAR", aviationweather.fetch("metar", icaos)))
     elif mode == "fly":
         tr.skip("AviationWeather.gov TAF", "Airport forecasts (TAF) only cover the next ~30 hours")
         tr.skip("AviationWeather.gov METAR", "Current observations only matter for same-day travel")
@@ -447,13 +448,12 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
         jobs["faa"] = tr.run("FAA NAS Status", faa.fetch())
     else:
         tr.skip("FAA NAS Status", "Driving trip — airport programs not relevant")
-    jobs["news"] = _news(tr, origin, dest, origin_aps + conn_aps, dest_aps)
+    slow["news"] = asyncio.create_task(_news(tr, origin, dest, origin_aps + conn_aps, dest_aps))
 
     with perf.step("In parallel: NWS, aviation weather, FAA, news"):
-        deadline = time.monotonic() + AVWX_FIRST_WAIT_S
+        deadline = time.monotonic() + FIRST_ANSWER_WAIT_S
         results = dict(zip(jobs.keys(), await asyncio.gather(*jobs.values())))
-        if avwx:
-            await asyncio.wait(avwx.values(), timeout=max(0.0, deadline - time.monotonic()) if ai.enabled() else None)
+        await asyncio.wait(slow.values(), timeout=max(0.0, deadline - time.monotonic()) if ai.enabled() else None)
 
     def aviation_signals(done: dict[str, Any]) -> list[Signal]:
         out: list[Signal] = []
@@ -468,9 +468,16 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
             out += aviationweather.evaluate_metars(done["metar"], dest_aps, side="destination", same_day=obs_matter)
         return out
 
-    late = {k: t for k, t in avwx.items() if not t.done()}  # still loading: added before the AI's answer
+    late = {k: t for k, t in slow.items() if not t.done()}  # still loading: added before the AI's answer
+    results |= {k: t.result() for k, t in slow.items() if k not in late}
+    loading = "Still loading; included when the AI's answer arrives"
     for k in late:
-        tr.skip(f"AviationWeather.gov {k.upper()}", "Still loading; included when the AI's answer arrives")
+        if k == "news":  # whichever news source hasn't answered yet (_news overwrites this when it settles)
+            for name in ("Google News", "GDELT news"):
+                if name not in tr.calls and name not in tr.skipped:
+                    tr.skip(name, loading)
+        else:
+            tr.skip(f"AviationWeather.gov {k.upper()}", loading)
 
     for key, side, label, la, lo in points:
         if results.get(f"alerts|{key}") is not None:
@@ -480,7 +487,7 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
             signals += nws.evaluate_forecast(results[f"nwsfc|{key}"], sid=f"nwsfc-{key}", side=side,
                                              label=label, d=req.date, lat=la, lon=lo,
                                              window=plan.windows[key] if plan.timed else None)
-    signals += aviation_signals({k: t.result() for k, t in avwx.items() if k not in late})
+    signals += aviation_signals(results)
     if results.get("faa"):
         try:
             signals += faa.evaluate(results["faa"], origin_aps, dest_aps, days_out=days_out, hours_until=hours,
@@ -637,9 +644,11 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
     if ai.enabled():
         yield await finish(use_ai=False)
     if late:
-        with perf.step("AviationWeather.gov (after the first answer)"):
+        with perf.step(f"After the first answer: {', '.join(late)}"):
             await asyncio.wait(late.values())
-        found += aviation_signals({k: t.result() for k, t in late.items()})
+        done = {k: t.result() for k, t in late.items()}
+        results |= done  # the news is read in finish()
+        found += aviation_signals(done)
     yield await finish(use_ai=ai.enabled())
 
 
