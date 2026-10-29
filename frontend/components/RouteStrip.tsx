@@ -101,6 +101,21 @@ function FlightPath({ segments, driveTo, driveFrom }: { segments: Segment[]; dri
 }
 
 /** The hero: the route as two endpoints joined by a line, with the trip's status. */
+/** Opens the flight picker's "Enter a flight yourself" form and puts the cursor in its flight number box. */
+function openFlightEntry() {
+  const button = document.getElementById("enter-flight");
+  if (!button) {  // the picker isn't showing that button right now: just go to the flights
+    document.getElementById("flights-h")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (button.getAttribute("aria-expanded") !== "true") button.click();
+  setTimeout(() => {  // after the form has rendered
+    const input = document.querySelector<HTMLInputElement>(".manual-leg input");
+    (input ?? button).scrollIntoView({ behavior: "smooth", block: "center" });
+    input?.focus({ preventScroll: true });
+  }, 0);
+}
+
 export function RouteStrip({ data, pending }: { data?: AssessResponse; pending?: { origin: string; destination: string } }) {
   if (!data) {
     return (
@@ -221,8 +236,9 @@ export function RouteStrip({ data, pending }: { data?: AssessResponse; pending?:
             jet or a flight not listed in the schedule. It&apos;s timed at about {data.timing.cruise_mph} mph cruising
             speed plus {data.timing.overhead_min} min for taxi, climb and landing: {data.timing.moving_hours} hours for{" "}
             {data.timing.flight_miles} miles, about{" "}
-            {Math.round((data.timing.flight_miles ?? 0) / data.timing.moving_hours)} mph overall. Pick your flight
-            above for real times.
+            {Math.round((data.timing.flight_miles ?? 0) / data.timing.moving_hours)} mph overall. For real times,
+            enter your flight number at{" "}
+            <button type="button" className="link" onClick={openFlightEntry}>Enter a flight yourself</button>.
           </p>
         )}
         {data.timing?.better_departure && <p className="better-time">{data.timing.better_departure}</p>}

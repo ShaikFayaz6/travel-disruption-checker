@@ -190,7 +190,8 @@ export function FlightLegs({
               {busy && target === via ? "Searching…" : "Find flights"}
             </button>
           </span>
-          <button type="button" className="link" onClick={() => setManual((m) => !m)}>
+          <button type="button" id="enter-flight" className="link" aria-expanded={manual}
+            onClick={() => setManual((m) => !m)}>
             {manual ? "Cancel" : "Enter a flight yourself"}
           </button>
         </div>
