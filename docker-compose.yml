@@ -1,0 +1,32 @@
+# Trip Check in two containers: the FastAPI backend and the Next.js frontend.
+#   docker compose up --build        then open http://localhost:3000
+#   docker compose logs -f backend   per-check timing tables (every API call's latency and fetch time)
+# API keys come from backend/.env (copy backend/.env.example); they are never built into an image.
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false # without keys: rule-based summaries and hand-entered flights
+    environment:
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - backend-data:/app/data # airport and city lists, downloaded on first start
+    ports:
+      - "8000:8000" # optional: the API directly (http://localhost:8000/docs)
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8000 # the backend service on the compose network
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
