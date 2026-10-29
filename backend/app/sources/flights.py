@@ -9,6 +9,7 @@ The free plan has a small monthly quota, so results are cached for 30 minutes.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import date, datetime, timedelta
@@ -132,9 +133,9 @@ async def search(starts: dict[str, datetime], arr_iatas: list[str], limit: int =
     """Flights from the airports in `starts` to any of arr_iatas, each departing in the 12 h after
     that airport's start time (local), e.g. the earliest the traveller can be there."""
     wanted = {a.upper() for a in arr_iatas}
-    found: list[dict] = []
-    for dep, start in starts.items():  # one request per origin airport (quota)
-        found += [f for f in await departures(dep, start) if f["arr_iata"] in wanted]
+    # one request per origin airport (quota), all at once: each departure board takes seconds
+    boards = await asyncio.gather(*[departures(dep, start) for dep, start in starts.items()])
+    found = [f for board in boards for f in board if f["arr_iata"] in wanted]
     found.sort(key=lambda f: f["dep_local"])
     seen, out = set(), []
     for f in found:
