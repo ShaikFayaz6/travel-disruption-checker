@@ -131,9 +131,7 @@ def _close_names(q: str, n: int = 6) -> list[str]:
 
 
 def _city_out(c: City) -> dict:
-    pop = f"{c.population:,} people" if c.population else ""
-    return {"value": c.label, "label": c.label, "detail": " · ".join(p for p in (US_STATES[c.state], pop) if p),
-            "kind": "city", "timezone": c.timezone}
+    return {"value": c.label, "label": c.label, "detail": US_STATES[c.state], "kind": "city", "timezone": c.timezone}
 
 
 async def suggest(query: str, limit: int = 8) -> list[dict]:
