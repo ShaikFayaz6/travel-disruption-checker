@@ -115,6 +115,7 @@ async def _post(body: dict) -> dict:
                 )
             except httpx.HTTPError as e:
                 errors.append(f"{model}: {e.__class__.__name__}")
+                print(f"  Gemini {model}: no answer ({e.__class__.__name__}), trying the next model", flush=True)
                 break
             if resp.status_code == 200:
                 _last_model = model
@@ -133,12 +134,14 @@ async def _post(body: dict) -> dict:
             if (resp.status_code == 400 and model not in _no_thinking_cfg
                     and "thinkingConfig" in body.get("generationConfig", {})):
                 _no_thinking_cfg.add(model)  # doesn't take the thinking setting: same request without it
-                print(f"  Gemini {model}: rejected the thinking setting, sending without it", flush=True)
+                print(f"  Gemini {model}: HTTP 400 with the thinking setting ({msg[:120]}), sending without it", flush=True)
                 continue
             if resp.status_code in RETRYABLE and attempt == 0:
+                print(f"  Gemini {model}: busy (HTTP {resp.status_code}), retrying once", flush=True)
                 await asyncio.sleep(3)
                 continue
             errors.append(f"{model}: HTTP {resp.status_code} {msg[:120]}")
+            print(f"  Gemini {model}: HTTP {resp.status_code} ({msg[:120]}), trying the next model", flush=True)
             if resp.status_code in (400, 401, 403) and "model" not in msg.lower():
                 raise AIError(f"Gemini HTTP {resp.status_code}: {msg}")
             break

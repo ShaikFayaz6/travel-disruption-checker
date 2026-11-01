@@ -111,3 +111,19 @@ def test_all_models_used_up_fails_fast_with_when_they_return(gemini):
     with pytest.raises(ai.AIError, match=r"back in 2\.\d h \(skipped\)"):
         asyncio.run(ai._post({}))
     assert fake.called == []  # no request at all: straight to the rule-based summary
+
+
+def test_each_model_failure_is_logged_with_its_reason(gemini, monkeypatch, capsys):
+    class Failing(FakeGemini):
+        async def post(self, url, json=None, headers=None, timeout=None):
+            if "gemini-3.8-flash" in url:
+                raise httpx.ReadTimeout("timed out")
+            return await super().post(url, json=json, headers=headers, timeout=timeout)
+
+    answers = {"gemini-flash-latest": (404, {"error": {"message": "model not found"}}), "gemini-flash-lite-latest": (200, OK)}
+    failing = Failing(answers)
+    monkeypatch.setattr(ai.http, "client", lambda: failing)
+    asyncio.run(ai._post({}))
+    log = capsys.readouterr().out
+    assert "gemini-3.8-flash: no answer (ReadTimeout)" in log
+    assert "gemini-flash-latest: HTTP 404 (model not found)" in log
