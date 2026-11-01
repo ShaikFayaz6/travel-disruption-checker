@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import ai, perf, scoring, timing
 from .config import DRIVE_THRESHOLD_MILES
-from .models import Airport, AssessRequest, AssessResponse, FlightLeg, Place, Segment, Signal, SourceStatus, Timing
+from .models import Airport, AssessRequest, AssessResponse, FasterByCar, FlightLeg, Place, Segment, Signal, SourceStatus, Timing
 from .sources import airports, aviationweather, faa, geocode, news, nws, openmeteo, places
 from .timeutil import today_in, tzinfo_for, utc_now_iso
 
@@ -50,6 +50,7 @@ class TripError(ValueError):
 class _Tracker:
     calls: dict[str, list[tuple[bool, int, str]]] = field(default_factory=dict)
     skipped: dict[str, str] = field(default_factory=dict)
+    no_data: set[str] = field(default_factory=set)
 
     async def run(self, name: str, coro: Awaitable[Any]) -> Any:
         t0 = time.perf_counter()
@@ -74,6 +75,8 @@ class _Tracker:
             detail = f"{ok}/{len(calls)} requests succeeded" + (f" — {errs[0]}" if errs else "")
             if not ok and errs[0].startswith("ConnectionError: "):  # already a plain-language message
                 detail = errs[0].removeprefix("ConnectionError: ")
+            if name in self.no_data:
+                status, detail = "no_data", "No data available for that period"
             out.append(SourceStatus(name=name, status=status, detail=detail,
                                     latency_ms=max(c[1] for c in calls), url=SOURCE_URLS.get(name)))
         for name, why in self.skipped.items():
@@ -394,6 +397,15 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
             points.append(("dg", "destination", f"Drive from {da.iata} (to {dest.name})", dest.lat, dest.lon))
             plan.windows["dg"], tz_key["dg"], point_mode["dg"] = gnd.from_window, (dest.timezone, dest.lon), "drive"
     win_text = {key: timing.window_label(plan.windows[key], *shown(tz_key[key])) for key, *_ in points} if plan.timed else {}
+
+    # 2d. Flying with no flight chosen: would driving be quicker door to door?
+    faster_by_car = None
+    if mode == "fly" and not legs:
+        air_h = timing.air_door_hours(dist, airports.haversine_miles(origin.lat, origin.lon, origin_aps[0].lat, origin_aps[0].lon),
+                                      airports.haversine_miles(dest_aps[0].lat, dest_aps[0].lon, dest.lat, dest.lon))
+        drive_h = timing.drive_door_hours(dist)
+        if drive_h < air_h:
+            faster_by_car = FasterByCar(drive_time=_duration(drive_h), air_time=_duration(air_h))
     hours = plan.hours_until
 
     signals: list[Signal] = []
@@ -462,6 +474,8 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
             for i, ap in enumerate(conn_aps, 1):
                 out += aviationweather.evaluate_tafs(done["taf"], [ap], side="route", window=plan.windows[f"c{i}"])
             out += aviationweather.evaluate_tafs(done["taf"], dest_aps, side="destination", window=plan.windows["d"])
+        if "taf" in done and not out:  # it failed, came back empty, or doesn't cover these hours
+            tr.no_data.add("AviationWeather.gov TAF")
         if done.get("metar"):
             out += aviationweather.evaluate_metars(done["metar"], origin_aps, side="origin", same_day=obs_matter)
             out += aviationweather.evaluate_metars(done["metar"], conn_aps, side="route", same_day=obs_matter)
@@ -635,7 +649,7 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
         signals.sort(key=lambda s: (not s.applies_to_travel_date, -s.severity, s.side, s.source))
         return AssessResponse(
             request=req, origin=origin, destination=dest, mode=mode, distance_miles=round(dist, 1),
-            days_out=days_out, horizon_note=r["note"], timing=timing_out,
+            days_out=days_out, horizon_note=r["note"], timing=timing_out, faster_by_car=faster_by_car,
             origin_airports=origin_aps, destination_airports=dest_aps,
             risk_level=r["level"], risk_score=r["pts"], confidence=r["conf"], confidence_reason=r["conf_reason"],
             assessment=assessment, signals=signals, sources=tr.statuses(), generated_at=utc_now_iso(),

@@ -36,7 +36,7 @@ export interface Signal {
 
 export interface SourceStatus {
   name: string;
-  status: "ok" | "error" | "skipped";
+  status: "ok" | "error" | "skipped" | "no_data";
   detail: string;
   latency_ms?: number | null;
   url?: string | null;
@@ -106,6 +106,7 @@ export interface Timing {
 export interface AssessResponse {
   request: { origin: string; destination: string; date: string; time?: string | null; mode: Mode };
   timing?: Timing | null;
+  faster_by_car?: { drive_time: string; air_time: string } | null; // flying, no flight chosen, driving looks quicker
   origin: Place;
   destination: Place;
   mode: "fly" | "drive";

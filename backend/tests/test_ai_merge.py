@@ -7,7 +7,7 @@ import pytest
 
 from app import ai
 from app import assess as assess_mod
-from app.models import AssessRequest, Assessment, RiskItem
+from app.models import AssessRequest, Assessment, RiskItem, SourceStatus
 from tests.test_pipeline import stub  # noqa: F401  (autouse fixture: network stubbed)
 
 ARTICLES = [
@@ -213,3 +213,28 @@ def test_headlines_are_quoted_data_in_the_prompt():
     lines = ai._headlines(evil).splitlines()
     assert len(lines) == 1 and lines[0].startswith('[news-0] ' + json.dumps(evil[0]["title"]))
     assert "untrusted" in ai.COMBINED_SYSTEM
+
+
+@pytest.mark.parametrize("taf", [RuntimeError("502 Bad Gateway"), [], [{"icaoId": "XXXX"}]],
+                         ids=["fails", "empty", "not for these hours"])
+def test_taf_without_data_reads_no_data_never_the_error(trip, monkeypatch, taf):
+    async def fetch(kind, icaos):
+        if kind == "taf" and isinstance(taf, Exception):
+            raise taf
+        return taf if kind == "taf" else []
+
+    trip([])  # sets up the AI stubs
+    monkeypatch.setattr(assess_mod.aviationweather, "fetch", fetch)
+    res = asyncio.run(assess_mod.assess(AssessRequest(origin="New York, NY", destination="San Francisco, CA",
+                                                      date=date.today() + timedelta(days=1), time="08:00", mode="fly")))
+    status = next(s for s in res.sources if s.name == "AviationWeather.gov TAF")
+    assert status.status == "no_data" and status.detail == "No data available for that period"
+
+
+def test_no_data_lowers_near_term_confidence_and_isnt_called_unavailable():
+    sources = [SourceStatus(name=f"s{i}", status="ok") for i in range(4)]
+    sources.append(SourceStatus(name="AviationWeather.gov TAF", status="no_data"))
+    level, reason = assess_mod.scoring.confidence(1, sources)
+    assert level == "medium" and "no data available for that period: AviationWeather.gov TAF" in reason
+    assert assess_mod.scoring.confidence(1, sources[:4])[0] == "high"
+    assert "unavailable" not in reason

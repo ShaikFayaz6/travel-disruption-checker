@@ -105,7 +105,7 @@ For car trips, the line shows the total driving time, including overnight stops 
 - **What to do.** Up to 3 simple actions, sorted by when to do them.
 - **Evidence.** The data that raised a concern. Everything else that was checked and found normal is in a separate list, sorted in trip order, with the hours you will be at each place.
 - **How sure is this.** The confidence level, *why* (for example "Near-term forecasts and live airport data are available"), and what could still change.
-- **Sources.** Every source used, marked *Checked* or *Unavailable* (with the reason).
+- **Sources.** Every source used, marked *Checked* or *Unavailable* (with the reason). Airport forecasts (TAF) show *No data* instead when they fail, come back empty or don't cover your hours.
 
 ### 5. All times in your own time zone
 
@@ -197,7 +197,7 @@ I use 13 free sources. None of them needed to be paid for.
 | **AeroDataBox** (optional key) | Real flight schedules, and lookup by flight number | Air trips |
 | **Google Gemini** (optional key) | Reads the evidence and writes the summary | Always, if a key is set |
 
-If a source fails, the check still finishes. The failed source is shown as *Unavailable* with the reason.
+If a source fails, the check still finishes. The failed source is shown as *Unavailable* with the reason. The exception is airport forecasts (TAF), shown as *No data available for that period*.
 
 ---
 
@@ -219,6 +219,7 @@ If a source fails, the check still finishes. The failed source is shown as *Unav
 
 - **A flight you didn't pick:** a direct flight at about 470 mph, plus about 36 minutes for taxi, take-off and landing. The page shows a clear note that this is an assumption (for example, a private jet or an unlisted flight).
 - **Driving:** about 62 mph on roads about 20% longer than a straight line.
+- **Short trips by air:** with no flight chosen, if these guesses make driving quicker door to door, the page says so and offers *Check by car instead*. Air stays your choice, because you may have a private or charter flight. Private jets and helicopters aren't fully covered: the times assume an airline-style trip.
 - **Driving to and from the airport:** about 50 mph.
 - **At the airport:** 1 hour before take-off for check-in and bags, and 30 minutes after landing for baggage claim.
 
@@ -269,7 +270,7 @@ The AI (Google Gemini) has two jobs, and does both in **one** request:
 - **Every guess is labelled.** Estimated arrival times, assumed flights and drive times are marked as estimates, with the numbers used.
 - **Evidence that doesn't affect your trip** (for example today's FAA status for a trip next week) is shown separately and does not count toward the rating.
 - **Every evidence item** shows when the data was made and which hours it covers.
-- **Every source** is listed as *Checked* or *Unavailable* (with the reason).
+- **Every source** is listed as *Checked*, *Unavailable* (with the reason) or, for airport forecasts (TAF), *No data*.
 
 ---
 

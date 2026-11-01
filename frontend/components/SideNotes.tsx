@@ -1,6 +1,6 @@
 import type { AssessResponse } from "@/lib/types";
 
-const STATUS_TEXT = { ok: "Checked", error: "Unavailable", skipped: "Not needed" } as const;
+const STATUS_TEXT = { ok: "Checked", error: "Unavailable", skipped: "Not needed", no_data: "No data" } as const;
 
 /** The backend's AI error in plain words: "AIError: All Gemini models failed — a: … | b: …" -> "a: … ; b: …". */
 function aiReason(err: string): string {
@@ -52,7 +52,7 @@ export function SideNotes({ data }: { data: AssessResponse }) {
                   )}
                   <span className="src-state">{STATUS_TEXT[s.status]}</span>
                 </p>
-                {s.status === "error" && <p className="src-detail">{s.detail}</p>}
+                {(s.status === "error" || s.status === "no_data") && <p className="src-detail">{s.detail}</p>}
               </div>
             </li>
           ))}

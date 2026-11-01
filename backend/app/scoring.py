@@ -55,6 +55,7 @@ def confidence(days_out: int, sources: list[SourceStatus]) -> tuple[str, str]:
     ok = sum(1 for s in sources if s.status == "ok")
     failed = [s.name for s in sources if s.status == "error"]
     weather_failed = any("Open-Meteo" in n or "Weather Service" in n for n in failed)
+    no_data = [s.name for s in sources if s.status == "no_data"]
     if days_out > 7:
         level = "low"
         reason = "the trip is more than a week away, beyond reliable forecast range"
@@ -62,8 +63,10 @@ def confidence(days_out: int, sources: list[SourceStatus]) -> tuple[str, str]:
         level = "medium" if ok >= 3 and not weather_failed else "low"
         reason = "multi-day forecasts are reasonably reliable for broad patterns but not exact timing"
     else:
-        level = "high" if ok >= 4 and not weather_failed else "medium"
+        level = "high" if ok >= 4 and not weather_failed and not no_data else "medium"
         reason = "near-term forecasts and live airport data are available"
     if failed:
         reason += f"; unavailable sources: {', '.join(failed)}"
+    if no_data:
+        reason += f"; no data available for that period: {', '.join(no_data)}"
     return level, reason[0].upper() + reason[1:] + "."

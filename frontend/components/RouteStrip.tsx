@@ -232,8 +232,9 @@ export function RouteStrip({ data, pending }: { data?: AssessResponse; pending?:
         {data.timing?.est_flight && (
           <p className="assumed" role="note">
             <strong>No flight chosen, so the flight times are an assumption.</strong> You chose to travel by air, so
-            this assumes a nonstop flight leaving as soon as you&apos;re through the airport. It could be a private
-            jet or a flight not listed in the schedule. It&apos;s timed at about {data.timing.cruise_mph} mph cruising
+            this assumes a nonstop flight leaving as soon as you&apos;re through the airport. Private jets and
+            helicopters aren&apos;t fully covered: the times assume an airline-style trip with check-in, baggage claim
+            and a main airport. It&apos;s timed at about {data.timing.cruise_mph} mph cruising
             speed plus {data.timing.overhead_min} min for taxi, climb and landing: {data.timing.moving_hours} hours for{" "}
             {data.timing.flight_miles} miles, about{" "}
             {Math.round((data.timing.flight_miles ?? 0) / data.timing.moving_hours)} mph overall. For real times,

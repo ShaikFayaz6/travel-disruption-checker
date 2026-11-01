@@ -20,9 +20,11 @@ export default function Home() {
   useEffect(() => setInput((v) => (v.date ? v : { ...v, date: isoDate(1) })), []);
 
   const runId = useRef(0); // a newer check replaces an older one still streaming its AI answer
+  const lastRun = useRef<TripInput | null>(null); // what the result on screen was checked for
 
   async function run(v: TripInput) {
     const id = ++runId.current;
+    lastRun.current = v;
     setBusy(true);
     setError(null);
     setPending(v);
@@ -60,6 +62,13 @@ export default function Home() {
     }
   }
 
+  function checkByCar() {
+    if (!lastRun.current) return;
+    const v: TripInput = { ...lastRun.current, mode: "drive", legs: [] };
+    setInput(v);
+    run(v);
+  }
+
   function showEvidence(id: string) {
     setHighlight(id);
     requestAnimationFrame(() =>
@@ -95,6 +104,14 @@ export default function Home() {
 
       {data && (
         <>
+          {data.faster_by_car && (
+            <p className="assumed" role="note">
+              <strong>Driving looks faster for this trip.</strong> About {data.faster_by_car.drive_time} by car, compared
+              with about {data.faster_by_car.air_time} door to door by air.{" "}
+              <button type="button" className="link" onClick={checkByCar}>Check by car instead</button>. Keep flying if
+              you have a private or charter flight.
+            </p>
+          )}
           <RouteStrip data={data} />
           <div className="results">
             <div className="main-col">

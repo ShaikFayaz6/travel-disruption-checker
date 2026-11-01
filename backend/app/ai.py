@@ -223,7 +223,8 @@ Rules:
   worst weather. Make it one of the actions, with its time. Never suggest other times on your own.
 - The overall risk level and confidence are already computed by rules; explain them, don't change them.
 - Be honest about uncertainty: say how far out the trip is, which sources are forecasts vs live,
-  and what could change. Note any data sources that failed.
+  and what could change. Note any data sources that failed. For a source with status no_data,
+  say only that no data is available for that period.
 - Actions must be concrete and proportionate (e.g. "No action needed; re-check the day before",
   "Book the morning departure", "Consider flying from LGA instead of EWR", "Check your airline's
   travel waiver page", "Leave 45 minutes earlier for the airport"). Do not invent airline

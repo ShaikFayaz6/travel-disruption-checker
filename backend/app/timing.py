@@ -102,6 +102,17 @@ def ground_hours(miles: float) -> float:
     return max(0.25, math.ceil(miles * ROAD_FACTOR / GROUND_MPH * 12) / 12)
 
 
+def air_door_hours(dist_miles: float, to_miles: float, from_miles: float) -> float:
+    """Door to door by air with no flight chosen: the drives, check-in, the nonstop flight and bags."""
+    return (ground_hours(to_miles) + CHECKIN_H + duration_hours("fly", dist_miles) + BAGS_H
+            + ground_hours(from_miles))
+
+
+def drive_door_hours(dist_miles: float) -> float:
+    """Door to door by car, including any overnight stops."""
+    return elapsed_hours("drive", duration_hours("drive", dist_miles))
+
+
 @dataclass
 class Ground:
     """Door-to-door times around the flights (UTC), and the drive windows at each end."""

@@ -122,7 +122,7 @@ class Signal(BaseModel):
 
 class SourceStatus(BaseModel):
     name: str
-    status: Literal["ok", "error", "skipped"]
+    status: Literal["ok", "error", "skipped", "no_data"]
     detail: str = ""
     latency_ms: Optional[int] = None
     url: Optional[str] = None
@@ -152,6 +152,11 @@ class Assessment(BaseModel):
     ai_error: Optional[str] = None
 
 
+class FasterByCar(BaseModel):
+    drive_time: str  # e.g. "41 min"
+    air_time: str  # door to door, e.g. "3 h"
+
+
 class AssessResponse(BaseModel):
     request: AssessRequest
     origin: Place
@@ -161,6 +166,7 @@ class AssessResponse(BaseModel):
     days_out: int
     horizon_note: str
     timing: Optional[Timing] = None
+    faster_by_car: Optional[FasterByCar] = None  # flying with no flight chosen, when driving looks quicker door to door
     origin_airports: list[Airport]
     destination_airports: list[Airport]
     risk_level: RiskLevel
