@@ -100,6 +100,24 @@ async def resolve_airports(place: Place, query: str):
     return await airports.nearest(place.lat, place.lon)
 
 
+def _each_airport_on_one_side(origin_aps: list[Airport], dest_aps: list[Airport]) -> tuple[list[Airport], list[Airport]]:
+    """An airport near both ends (Dallas and Denton share DAL and DFW) is checked for one end only, so it
+    isn't listed or rated twice. Each end keeps its main airport; an extra one goes to the end it's nearer."""
+    near_o, near_d = {a.iata: a.distance_miles for a in origin_aps}, {a.iata: a.distance_miles for a in dest_aps}
+    extra_o = [a for a in origin_aps[1:] if a.iata != dest_aps[0].iata and a.distance_miles <= near_d.get(a.iata, a.distance_miles)]
+    extra_d = [a for a in dest_aps[1:] if a.iata != origin_aps[0].iata and a.distance_miles < near_o.get(a.iata, a.distance_miles + 1)]
+    return origin_aps[:1] + extra_o, dest_aps[:1] + extra_d
+
+
+def _worst_per_id(signals: list[Signal]) -> list[Signal]:
+    """One airport checked for two parts of a trip (say, DFW as both ends): one item, the worse of the two."""
+    worst: dict[str, Signal] = {}
+    for s in signals:
+        if s.id not in worst or s.severity > worst[s.id].severity:
+            worst[s.id] = s
+    return list(worst.values())
+
+
 async def _resolve_legs(legs: list[FlightLeg], dest: Place):
     """Airports (origin, connections..., destination), their time zones, each leg's (departure,
     arrival) in UTC, which arrivals were estimated, and the legs with blanks filled in.
@@ -320,7 +338,7 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
                                                              resolve_airports(dest, req.destination)))
         if res is None:
             raise TripError("Couldn't load the airport database (OurAirports). Check network access and retry.")
-        origin_aps, dest_aps = res
+        origin_aps, dest_aps = _each_airport_on_one_side(*res)
     else:
         tr.skip("OurAirports", "Driving trip — airports not used")
 
@@ -480,7 +498,7 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
             out += aviationweather.evaluate_metars(done["metar"], origin_aps, side="origin", same_day=obs_matter)
             out += aviationweather.evaluate_metars(done["metar"], conn_aps, side="route", same_day=obs_matter)
             out += aviationweather.evaluate_metars(done["metar"], dest_aps, side="destination", same_day=obs_matter)
-        return out
+        return _worst_per_id(out)
 
     late = {k: t for k, t in slow.items() if not t.done()}  # still loading: added before the AI's answer
     results |= {k: t.result() for k, t in slow.items() if k not in late}
