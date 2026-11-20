@@ -51,3 +51,5 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").strip().rstrip
 # Optional: server-side GA4 purchase event (Measurement Protocol)
 GA4_MEASUREMENT_ID = os.getenv("GA4_MEASUREMENT_ID", "").strip()
 GA4_API_SECRET = os.getenv("GA4_API_SECRET", "").strip()
+# true = mark server-side GA4 events as debug, so they show in GA4's DebugView (for testing only)
+GA4_DEBUG = os.getenv("GA4_DEBUG", "").strip().lower() == "true"

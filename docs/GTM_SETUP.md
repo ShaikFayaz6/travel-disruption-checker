@@ -44,7 +44,19 @@ Use the same name for the variable and the "Data Layer Variable Name", with Vers
 
 Name them `DLV - mode`, `DLV - has_flights` and so on.
 
-## 4. In GTM: one trigger + one tag per event
+## 4. In GTM: the triggers and tags
+
+**Quick option (used for Trip Check): one trigger + one tag for all six events.**
+
+1. Variables → Built-In Variables → Configure → tick **Event**.
+2. Triggers → New → **Custom Event**, event name
+   `check_started|check_completed|paywall_shown|sign_up|login|begin_checkout`, tick **Use regex
+   matching**. Save as "CE - Trip Check events".
+3. Tags → New → **Google Analytics: GA4 Event**, Measurement ID `G-...`, Event Name `{{Event}}`, and
+   all 8 parameters from section 1 mapped to their `DLV - ...` variables (a parameter an event doesn't
+   have is simply not sent). Trigger: "CE - Trip Check events". Save as "GA4 - Trip Check events".
+
+**Or, one trigger + one tag per event** (more clicks, but each event can have its own settings):
 
 Do this for each of `check_started`, `check_completed`, `paywall_shown`, `sign_up`, `login`, `begin_checkout`:
 
@@ -77,9 +89,9 @@ Assistant window lists `check_started`, then `check_completed`, with "GA4 - ..."
 Run a second air check for `paywall_shown`, then sign up (`sign_up`) and click Upgrade (`begin_checkout`).
 
 **GA4 DebugView:** GA4 → Admin → **DebugView**. Events from GTM Preview show up there within a few
-seconds. To see the server-side `purchase` in DebugView too, temporarily send it to the validation
-server or add `"debug_mode": 1` to its params in `backend/app/ga4.py`. Otherwise it appears in the
-**Realtime** report within a minute, and in normal reports after up to 24 hours.
+seconds. To see the server-side `purchase` in DebugView too, set `GA4_DEBUG=true` in `backend/.env`
+and restart the backend (turn it off again in production). Otherwise it appears in the **Realtime**
+report within a minute, and in normal reports after up to 24 hours.
 
 ## 7. The sign-up funnel
 

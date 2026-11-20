@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from .config import GA4_API_SECRET, GA4_MEASUREMENT_ID
+from .config import GA4_API_SECRET, GA4_DEBUG, GA4_MEASUREMENT_ID
 
 URL = "https://www.google-analytics.com/mp/collect"
 _tasks: set[asyncio.Task] = set()  # keeps fire-and-forget sends alive until they finish
@@ -47,6 +47,8 @@ def send_purchase(*, client_id: str | None, transaction_id: str, value: float, c
         "transaction_id": transaction_id, "value": value, "currency": currency.upper(),
         "items": [{"item_id": item_id, "item_name": item_name, "price": value, "quantity": 1}],
     }}
+    if GA4_DEBUG:  # show it in GA4 -> Admin -> DebugView while testing
+        event["params"]["debug_mode"] = 1
     task = asyncio.create_task(_send(client_id or random_client_id(), event))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
