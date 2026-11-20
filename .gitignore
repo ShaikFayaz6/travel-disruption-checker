@@ -8,3 +8,4 @@ __pycache__/
 .env
 backend/data/airports.csv
 backend/data/us_cities.tsv
+.env*.local

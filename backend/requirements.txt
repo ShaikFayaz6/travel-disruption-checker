@@ -5,3 +5,6 @@ pydantic>=2.14
 python-dotenv>=1.2
 tzdata>=2026.6
 pytest>=9.2
+asyncpg>=0.32
+PyJWT[crypto]>=2.15
+stripe>=17.1

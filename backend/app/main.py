@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from . import ai, http, perf, timing
+from . import ai, billing, db, gate, http, perf, timing
 from .assess import TripError, valid_tz, resolve_airports, assess, assess_stream
 from .timeutil import tzinfo_for
 from .config import CORS_ORIGINS, GEMINI_MODEL
@@ -30,13 +30,16 @@ async def _warm() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     warm = asyncio.create_task(_warm())
+    await db.init()  # accounts database: does nothing unless DATABASE_URL is set
     yield
     warm.cancel()
+    await db.close()
     await http.close()
 
 
 app = FastAPI(title="Travel Disruption Checker", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+app.include_router(billing.router)  # accounts and Trip Check Pro: /api/me, /api/billing/*, /api/stripe/webhook
 
 TRACED = {"/api/assess", "/api/flights", "/api/flight"}  # not /api/places: it runs on every keystroke
 
@@ -112,27 +115,37 @@ async def suggest_places(q: str = Query("", max_length=80)):
 
 
 @app.post("/api/assess", response_model=AssessResponse)
-async def assess_trip(req: AssessRequest) -> AssessResponse:
+async def assess_trip(req: AssessRequest, request: Request) -> AssessResponse:
+    who = await gate.identify(request)  # the paywall (gate.py): nobody, unless it is switched on
     try:
-        return await assess(req)
+        res = await assess(req, on_mode=gate.checker(who))
     except TripError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except gate.PaywallBlocked as e:
+        raise HTTPException(status_code=402, detail=e.detail) from e
+    await gate.record_for(who, res.mode, req)  # counts as the free air check only now it has succeeded
+    return res
 
 
 @app.post("/api/assess/stream")
-async def assess_trip_stream(req: AssessRequest):
+async def assess_trip_stream(req: AssessRequest, request: Request):
     """The same assessment as progressive results, one JSON object per line (NDJSON).
 
     The first line comes as soon as the data is in (rules-only summary, ai_pending: true); the AI's
     version follows on the next line. A trip error before the first line is a normal 400.
     """
     t = perf.begin("POST /api/assess/stream")
-    answers = assess_stream(req)
+    who = await gate.identify(request)  # the paywall (gate.py): nobody, unless it is switched on
+    answers = assess_stream(req, on_mode=gate.checker(who))
     try:
         first = await answers.__anext__()
     except TripError as e:
         perf.log(t, 400)
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except gate.PaywallBlocked as e:
+        perf.log(t, 402)
+        raise HTTPException(status_code=402, detail=e.detail) from e
+    await gate.record_for(who, first.mode, req)  # counts as the free air check only now it has succeeded
     print(f"  first answer sent after {t.ms()} ms", flush=True)
 
     async def lines():

@@ -1,3 +1,5 @@
+import { authHeaders } from "./session";
+
 export type RiskLevel = "low" | "medium" | "high";
 export type Mode = "auto" | "fly" | "drive";
 
@@ -246,6 +248,14 @@ export async function lookupFlight(number: string, date: string): Promise<Flight
   return data.legs;
 }
 
+// The paywall stopped this check (HTTP 402): code is free_limit_reached or subscription_required
+export class PaywallError extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = "PaywallError";
+  }
+}
+
 export async function assessTrip(body: {
   origin: string;
   destination: string;
@@ -262,7 +272,7 @@ export async function assessTrip(body: {
   // Unset: the same-origin /api proxy, as in development and docker compose.
   const res = await fetch(`${process.env.NEXT_PUBLIC_STREAM_URL ?? ""}/api/assess/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) }, // who is asking (paywall)
     // empty time = check the whole day; no legs = estimate the flight. display_tz: the date and time
     // are on the viewer's clock, and every time in the answer comes back on it
     body: JSON.stringify({ ...body, time: body.time || null, legs: body.legs?.length ? body.legs : null,
@@ -272,9 +282,11 @@ export async function assessTrip(body: {
     let msg = `The assessment service returned ${res.status}.`;
     try {
       const data = await res.json();
+      if (res.status === 402) throw new PaywallError(data.detail.code, data.detail.message);
       if (typeof data.detail === "string") msg = data.detail;
       else if (Array.isArray(data.detail)) msg = data.detail.map((d: { msg: string }) => d.msg).join("; ");
-    } catch {
+    } catch (e) {
+      if (e instanceof PaywallError) throw e;
       if (res.status >= 500) msg = "Can't reach the backend. Start it with: uvicorn app.main:app --port 8000";
     }
     throw new Error(msg);

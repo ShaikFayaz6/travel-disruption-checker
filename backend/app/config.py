@@ -33,3 +33,23 @@ CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3
 
 # Trips shorter than this (great-circle miles) are treated as likely drives in "auto" mode.
 DRIVE_THRESHOLD_MILES = float(os.getenv("DRIVE_THRESHOLD_MILES", "300"))
+
+# Optional: accounts and the free air-check limit (Supabase). Both set = the paywall is on.
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()  # Supabase session pooler URI
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "").strip()  # empty = check tokens with JWKS
+IP_HASH_SALT = os.getenv("IP_HASH_SALT", "").strip()
+PAYWALL_ENABLED = bool(DATABASE_URL and SUPABASE_URL)
+
+# Optional: Stripe subscriptions (test mode). All three plus the paywall = billing is on.
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID", "").strip()
+BILLING_ENABLED = PAYWALL_ENABLED and bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_ID)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").strip().rstrip("/")
+
+# Optional: server-side GA4 purchase event (Measurement Protocol)
+GA4_MEASUREMENT_ID = os.getenv("GA4_MEASUREMENT_ID", "").strip()
+GA4_API_SECRET = os.getenv("GA4_API_SECRET", "").strip()
+# true = mark server-side GA4 events as debug, so they show in GA4's DebugView (for testing only)
+GA4_DEBUG = os.getenv("GA4_DEBUG", "").strip().lower() == "true"

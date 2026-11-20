@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AccountLink } from "@/components/AccountLink";
 import { Evidence } from "@/components/Evidence";
 import { Findings } from "@/components/Findings";
+import { Paywall } from "@/components/Paywall";
 import { RouteStrip } from "@/components/RouteStrip";
 import { SideNotes } from "@/components/SideNotes";
 import { TripForm, TripInput, isoDate } from "@/components/TripForm";
-import { assessTrip, type AssessResponse } from "@/lib/types";
+import { track } from "@/lib/analytics";
+import { assessTrip, PaywallError, type AssessResponse } from "@/lib/types";
 
 export default function Home() {
   const [input, setInput] = useState<TripInput>({ origin: "", destination: "", date: "", time: "", mode: "fly", legs: [] });
@@ -15,9 +18,15 @@ export default function Home() {
   const [data, setData] = useState<AssessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
+  const [paywall, setPaywall] = useState<PaywallError | null>(null); // an air check the backend refused (402)
 
   // date default is set on the client to avoid a server/client timezone mismatch
   useEffect(() => setInput((v) => (v.date ? v : { ...v, date: isoDate(1) })), []);
+  // back from sign-up/sign-in via the paywall: show the upgrade offer again
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("upgrade") === "1")
+      setPaywall(new PaywallError("subscription_required", "Upgrade for unlimited air checks."));
+  }, []);
 
   const runId = useRef(0); // a newer check replaces an older one still streaming its AI answer
   const lastRun = useRef<TripInput | null>(null); // what the result on screen was checked for
@@ -27,10 +36,13 @@ export default function Home() {
     lastRun.current = v;
     setBusy(true);
     setError(null);
+    setPaywall(null);
     setPending(v);
     setData(null);
     setHighlight(null);
     let first = true;
+    const t0 = performance.now();
+    track("check_started", { mode: v.mode, has_flights: v.legs.length > 0 });
     try {
       // progressive: the first answer (rules only) shows in ~2 s, the AI's replaces it when ready
       await assessTrip(v, (res) => {
@@ -40,6 +52,7 @@ export default function Home() {
         setPending(null);
         if (!first) return;
         first = false;
+        track("check_completed", { mode: res.mode, risk_level: res.risk_level, ms_to_first_answer: Math.round(performance.now() - t0) });
         // with chosen flights, the time to leave home is worked out: show it in the form, rounded down
         // to the quarter hour the dropdown offers (a few minutes early is the safe side)
         const leave = res.timing?.leave_local;
@@ -51,7 +64,8 @@ export default function Home() {
       });
     } catch (e) {
       if (id !== runId.current) return;
-      if (first) setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (e instanceof PaywallError) setPaywall(e);
+      else if (first) setError(e instanceof Error ? e.message : "Something went wrong.");
       else setData((d) => (d ? { ...d, ai_pending: false } : d)); // keep the first answer
     } finally {
       if (id === runId.current) {
@@ -81,6 +95,7 @@ export default function Home() {
       <header className="masthead">
         <p className="brand">Trip Check</p>
         <p className="tagline">Will anything get in the way of this trip? Weather, airport status and news, checked in one place.</p>
+        <AccountLink />
       </header>
 
       <TripForm value={input} onChange={setInput} onSubmit={run} busy={busy} />
@@ -91,9 +106,11 @@ export default function Home() {
         </p>
       )}
 
+      {paywall && <Paywall code={paywall.code} message={paywall.message} />}
+
       {pending && <RouteStrip pending={{ origin: pending.origin, destination: pending.destination }} />}
 
-      {!pending && !data && !error && (
+      {!pending && !data && !error && !paywall && (
         <section className="empty">
           <p>Enter where you&apos;re leaving from, where you&apos;re going, and when you depart.</p>
           <p className="quiet">
