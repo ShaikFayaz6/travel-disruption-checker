@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover - only needed when DATABASE_URL is set
     asyncpg = None
 
 _pool = None
+KEEP = object()  # update_subscription: leave this column as it is
 
 
 def enabled() -> bool:
@@ -55,7 +56,7 @@ async def get_profile(user_id: str) -> dict | None:
     if not enabled():
         return None
     row = await (await _get()).fetchrow(
-        "select id, email, stripe_customer_id, plan, subscription_status, current_period_end "
+        "select id, email, stripe_customer_id, plan, subscription_status, current_period_end, cancel_at "
         "from profiles where id = $1", uuid.UUID(user_id))
     return dict(row) if row else None
 
@@ -76,10 +77,11 @@ async def set_customer_id(user_id: str, customer_id: str) -> None:
 
 
 async def update_subscription(*, user_id: str | None = None, customer_id: str | None = None, plan: str | None = None,
-                              status: str | None = None, period_end: dt.datetime | None = None) -> None:
+                              status: str | None = None, period_end: dt.datetime | None = None,
+                              cancel_at=KEEP) -> None:
     """Set a profile's plan / Stripe status / period end, found by user ID or else by Stripe customer ID.
 
-    Only the values given are changed.
+    Only the values given are changed. cancel_at: when a cancelled plan stops; None clears it (renews again).
     """
     if not enabled() or not (user_id or customer_id):
         return
@@ -88,6 +90,9 @@ async def update_subscription(*, user_id: str | None = None, customer_id: str | 
         if val is not None:
             args.append(val)
             sets.append(f"{col} = ${len(args)}")
+    if cancel_at is not KEEP:
+        args.append(cancel_at)
+        sets.append(f"cancel_at = ${len(args)}")
     if not sets:
         return
     if user_id:

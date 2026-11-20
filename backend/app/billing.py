@@ -48,6 +48,14 @@ def period_end(sub: dict) -> dt.datetime | None:
     return dt.datetime.fromtimestamp(ts, dt.timezone.utc) if ts else None
 
 
+def cancel_at(sub: dict) -> dt.datetime | None:
+    """When a cancelled subscription stops, or None if it renews. Stripe sets cancel_at, or (older
+    portal settings) cancel_at_period_end, which means the end of the current period."""
+    if sub.get("cancel_at"):
+        return dt.datetime.fromtimestamp(sub["cancel_at"], dt.timezone.utc)
+    return period_end(sub) if sub.get("cancel_at_period_end") else None
+
+
 def plan_for(status: str | None) -> str:
     return "free" if not status or status in ENDED else "pro"
 
@@ -60,12 +68,13 @@ async def me(request: Request):
         raise HTTPException(status_code=404, detail="Accounts aren't switched on.")
     user = await _signed_in(request)
     profile = await db.ensure_profile(user["id"], user["email"]) or {}
-    end = profile.get("current_period_end")
+    end, stops = profile.get("current_period_end"), profile.get("cancel_at")
     used = await db.fly_check_used(user_id=user["id"], anon_id=auth.anon_id(request), ip_hash=auth.ip_hash(request))
     return {"email": profile.get("email") or user["email"],
             "plan": "pro" if gate.is_paid(profile) else "free",
             "subscription_status": profile.get("subscription_status"),
             "current_period_end": end.isoformat() if end else None,
+            "cancel_at": stops.isoformat() if stops else None,  # cancelled: Pro until then, no renewal
             "free_air_check_used": used}
 
 
@@ -140,7 +149,7 @@ async def handle(event: dict) -> None:
         sub = (await stripe.Subscription.retrieve_async(obj["subscription"])).to_dict()
         user_id = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
         await db.update_subscription(user_id=user_id, customer_id=obj.get("customer"), plan=plan_for(sub["status"]),
-                                     status=sub["status"], period_end=period_end(sub))
+                                     status=sub["status"], period_end=period_end(sub), cancel_at=cancel_at(sub))
         ga4.send_purchase(client_id=(obj.get("metadata") or {}).get("ga_client_id"),
                           transaction_id=obj.get("invoice") or obj["id"],
                           value=(obj.get("amount_total") or 0) / 100, currency=obj.get("currency") or "usd")
@@ -148,6 +157,6 @@ async def handle(event: dict) -> None:
         status = obj["status"]
         await db.update_subscription(user_id=(obj.get("metadata") or {}).get("user_id"),
                                      customer_id=obj.get("customer"), plan=plan_for(status), status=status,
-                                     period_end=period_end(obj))
+                                     period_end=period_end(obj), cancel_at=cancel_at(obj))
     elif kind == "invoice.payment_failed":
         await db.update_subscription(customer_id=obj.get("customer"), status="past_due")

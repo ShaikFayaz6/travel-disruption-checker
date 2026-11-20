@@ -48,7 +48,8 @@ Use any future expiry date (e.g. `12/34`), any 3-digit CVC, and any ZIP code.
    `checkout.session.completed → 200`.
 6. Air checks are now unlimited.
 7. `/account` → **Manage billing** → cancel the plan. The webhook
-   (`customer.subscription.updated`) records it. When the paid period ends, Stripe sends
+   (`customer.subscription.updated`) records the end date: the account page shows "Ends on <date>",
+   and air checks stay unlimited until then (the month is paid for). When that date comes, Stripe sends
    `customer.subscription.deleted` and the user is back on the free plan.
 
 To test the end of a period without waiting a month, cancel **immediately** in the dashboard

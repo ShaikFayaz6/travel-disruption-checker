@@ -124,3 +124,23 @@ def test_webhook_is_off_without_billing(monkeypatch):
     monkeypatch.setattr(billing, "BILLING_ENABLED", False)
     payload = event("customer.subscription.updated", SUB)
     assert post(payload, signed(payload)).status_code == 404
+
+
+def test_cancelling_keeps_pro_until_the_end_date(calls):
+    cancelled = SUB | {"cancel_at": 1900000000}  # cancelled in the portal: still active until then
+    payload = event("customer.subscription.updated", cancelled, event_id="evt_cancel")
+    assert post(payload, signed(payload)).status_code == 200
+    assert calls[0]["plan"] == "pro" and calls[0]["status"] == "active"
+    assert calls[0]["cancel_at"].timestamp() == 1900000000
+
+
+def test_older_cancel_at_period_end_uses_the_period_end(calls):
+    payload = event("customer.subscription.updated", SUB | {"cancel_at_period_end": True}, event_id="evt_cape")
+    assert post(payload, signed(payload)).status_code == 200
+    assert calls[0]["cancel_at"].timestamp() == 1900000000
+
+
+def test_renewing_again_clears_the_end_date(calls):
+    payload = event("customer.subscription.updated", SUB | {"cancel_at": None}, event_id="evt_renew")
+    assert post(payload, signed(payload)).status_code == 200
+    assert calls[0]["cancel_at"] is None

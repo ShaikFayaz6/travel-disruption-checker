@@ -325,3 +325,24 @@ our backend, and the backend checks it.
   `/reset-password` isn't in its allowed redirect URLs), the home page passes it on to the reset page.
 - `docs/AUTH_SETUP.md` (new): the Supabase settings, and how to connect Google (a Google Cloud OAuth
   client + the Supabase Google provider).
+
+---
+
+## Added after testing: showing a cancelled plan correctly
+
+**Found while testing:** after cancelling in Stripe's Customer Portal, the user kept unlimited air
+checks (correct: they paid for the month), but the account page still said "Renews on", which was
+wrong.
+
+**Why:** cancelling in the portal doesn't end the subscription straight away. Stripe keeps it
+`active` and sets `cancel_at` to the end of the paid period. On that date it sends
+`customer.subscription.deleted`, and only then does the user go back to the free plan.
+
+**Files:**
+- `supabase/migrations/002_cancel_at.sql` (new): a `cancel_at` column on `profiles`.
+- `backend/app/billing.py`: the webhook stores `cancel_at` (or the period end, for Stripe's older
+  `cancel_at_period_end` flag), and clears it if the user turns renewal back on. `/api/me` returns it.
+- `backend/app/db.py`: `update_subscription()` can set or clear `cancel_at`.
+- `frontend/app/account/page.tsx`: shows "Ends on <date> (cancelled: unlimited air checks until then,
+  and you won't be charged again)" instead of "Renews on".
+- `backend/tests/test_billing_webhook.py`: 3 new tests (cancel date stored, older flag, renewal clears it).

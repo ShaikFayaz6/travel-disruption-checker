@@ -12,6 +12,7 @@ type Me = {
   plan: "free" | "pro";
   subscription_status: string | null;
   current_period_end: string | null;
+  cancel_at: string | null; // cancelled: Pro until this date, then back to free
   free_air_check_used: boolean;
 };
 
@@ -95,8 +96,9 @@ export default function AccountPage() {
     );
   }
 
-  const renews = me?.current_period_end ? new Date(me.current_period_end).toLocaleDateString() : null;
-  const cancelling = me?.plan === "pro" && me.subscription_status === "canceled";
+  const cancelling = me?.plan === "pro" && !!me.cancel_at;
+  const until = cancelling ? me?.cancel_at : me?.current_period_end;
+  const renews = until ? new Date(until).toLocaleDateString() : null;
   return (
     <main className="page">
       <section className="auth">
@@ -122,7 +124,10 @@ export default function AccountPage() {
             {renews && me.plan === "pro" && (
               <>
                 <dt>{cancelling ? "Ends on" : "Renews on"}</dt>
-                <dd>{renews}</dd>
+                <dd>
+                  {renews}
+                  {cancelling && " (cancelled: unlimited air checks until then, and you won't be charged again)"}
+                </dd>
               </>
             )}
             {me.plan !== "pro" && (
