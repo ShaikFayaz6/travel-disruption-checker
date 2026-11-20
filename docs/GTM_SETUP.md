@@ -91,7 +91,7 @@ GA4 → **Explore** → **Funnel exploration**. Steps (each one "Event name exac
 4. `begin_checkout`
 5. `purchase`
 
-Turn on "Make open funnel" off (closed funnel), and break down by `mode` or by device category.
+Leave "Make open funnel" off (a closed funnel), and break down by `mode` or by device category.
 This shows where people drop out between hitting the limit and paying.
 
 ## Why `purchase` is sent from the server

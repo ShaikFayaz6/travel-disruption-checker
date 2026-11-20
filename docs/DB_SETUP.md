@@ -11,6 +11,13 @@ Trip Check stores accounts, checks and Stripe events in Supabase's PostgreSQL da
 
 It is safe to run again: every statement checks whether its table, index or policy already exists.
 
+**Or from your computer**, once `DATABASE_URL` is set (step 3):
+
+```bash
+cd backend
+python scripts/db_migrate.py
+```
+
 ## 2. What it creates
 
 | Table | One row per | Used for |

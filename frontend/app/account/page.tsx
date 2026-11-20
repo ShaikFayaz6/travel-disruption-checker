@@ -5,7 +5,7 @@
 // arriving here from Checkout (?checkout=success) never activates anything by itself.
 import { useCallback, useEffect, useState } from "react";
 import { apiPost, authHeaders, useSession } from "@/lib/session";
-import { supabase } from "@/lib/supabase";
+import { accountsEnabled, getSupabase } from "@/lib/supabase";
 
 type Me = {
   email: string | null;
@@ -71,11 +71,11 @@ export default function AccountPage() {
   }
 
   async function signOut() {
-    await supabase?.auth.signOut();
+    await (await getSupabase())?.auth.signOut();
     window.location.href = "/";
   }
 
-  if (!supabase) {
+  if (!accountsEnabled) {
     return (
       <main className="page">
         <p className="error" role="alert">Accounts aren&apos;t set up on this site.</p>

@@ -5,7 +5,7 @@
 import { useEffect } from "react";
 import { track } from "@/lib/analytics";
 import { useSession } from "@/lib/session";
-import { supabase } from "@/lib/supabase";
+import { accountsEnabled } from "@/lib/supabase";
 
 export function AccountLink() {
   const { session, ready } = useSession();
@@ -21,7 +21,7 @@ export function AccountLink() {
     } catch {}
   }, [session]);
 
-  if (!supabase || !ready) return null;
+  if (!accountsEnabled || !ready) return null;
   return (
     <nav className="account-link" aria-label="Account">
       {session ? <a href="/account">{session.user.email ?? "Your account"}</a> : <a href="/signin">Sign in</a>}

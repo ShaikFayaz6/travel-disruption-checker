@@ -4,7 +4,7 @@
 // After it: back to the home page, or to the upgrade offer if they came from the paywall (?from=paywall).
 import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
-import { googleAuthEnabled, supabase } from "@/lib/supabase";
+import { accountsEnabled, getSupabase, googleAuthEnabled } from "@/lib/supabase";
 
 type Kind = "signin" | "signup";
 
@@ -22,7 +22,7 @@ export function AuthForm({ kind }: { kind: Kind }) {
   const other = kind === "signin" ? "/signup" : "/signin";
   const otherHref = fromPaywall ? `${other}?from=paywall` : other;
 
-  if (!supabase) {
+  if (!accountsEnabled) {
     return (
       <p className="error" role="alert">
         Accounts aren&apos;t set up on this site.
@@ -32,6 +32,7 @@ export function AuthForm({ kind }: { kind: Kind }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const supabase = await getSupabase();
     if (!supabase) return;
     setBusy(true);
     setError(null);
@@ -52,6 +53,7 @@ export function AuthForm({ kind }: { kind: Kind }) {
   }
 
   async function google() {
+    const supabase = await getSupabase();
     if (!supabase) return;
     try {
       sessionStorage.setItem("tc_oauth", kind); // AccountLink sends sign_up/login once they're back

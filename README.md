@@ -57,6 +57,7 @@ The assumptions I made (flight speed, drive speed, time at the airport) are list
 11. [Speed](#speed)
 12. [Files in the project](#files-in-the-project)
 13. [What is missing, and what I would change for real users](#what-is-missing-and-what-i-would-change-for-real-users)
+14. [Accounts and payments](#accounts-and-payments)
 
 ---
 
@@ -351,3 +352,32 @@ docker-compose.yml           Runs both with one command
 - Add **limits per user** so one person can't use up the shared AI and flight quotas.
 - Add **monitoring** for failing sources and slow checks, using the speed report the tool already has.
 - **Test with real travellers and the operations team**, and adjust the rules and wording based on what they find useful.
+
+---
+
+## Accounts and payments
+
+Trip Check can run as a small subscription product. **Everything here is off by default**: with none of
+these settings, the app works exactly as described above, with no sign-in and no limits.
+
+**What it does when switched on:**
+- **Car checks** stay free and unlimited, with no account.
+- **Air checks:** every visitor gets **1 free air check** without an account. The backend counts it by
+  browser ID *and* by a salted hash of the IP, so clearing the browser doesn't give another one.
+- After that, the visitor creates a free account (email + password, optionally Google), then upgrades
+  to **Trip Check Pro, $4.99/month** with Stripe Checkout, for unlimited air checks.
+- An **Account page** shows the plan and renewal date, with Stripe's Customer Portal to change the
+  card or cancel. Only Stripe's signed webhook can change a plan.
+- **GA4 + Google Tag Manager** track the funnel: check → paywall → sign-up → checkout → purchase. The
+  purchase is sent from the server, from the Stripe webhook.
+
+**How to switch it on:**
+
+| Feature | Needs | Guide |
+|---|---|---|
+| Accounts + free air-check limit | `DATABASE_URL`, `SUPABASE_URL` (backend); `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (frontend) | [docs/DB_SETUP.md](docs/DB_SETUP.md) |
+| Payments | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `FRONTEND_URL` | [docs/STRIPE_TESTING.md](docs/STRIPE_TESTING.md) |
+| Analytics | `NEXT_PUBLIC_GTM_ID` (frontend); `GA4_MEASUREMENT_ID`, `GA4_API_SECRET` (backend) | [docs/GTM_SETUP.md](docs/GTM_SETUP.md) |
+
+Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env.local`,
+fill in the values, and restart both. How it was built, step by step: [docs/BUILD_LOG.md](docs/BUILD_LOG.md).

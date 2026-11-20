@@ -197,3 +197,110 @@ is the only reliable signal that money moved.
 (open the success page without paying). The webhook only runs when Stripe has the money, so the
 revenue number in GA4 matches Stripe. The browser's GA4 client ID is passed through Checkout, so the
 purchase still joins the same visitor's journey.
+
+---
+
+## Phase 6: Sanity CMS (skipped)
+
+The plan made this optional, to do only if `NEXT_PUBLIC_SANITY_PROJECT_ID` was set. It wasn't, so the
+paywall uses the copy in `components/Paywall.tsx` (the `PLAN` object: name, price, benefits). That
+object is shaped like the planned Sanity `pricingPlan` document, so adding Sanity later only means
+fetching it and falling back to `PLAN` on any error.
+
+---
+
+## Phase 7: Tests, docs, finish
+
+**Tests** (all offline: the database, Stripe and the network are faked):
+- `backend/tests/test_gate.py`: the free air-check rule. Car checks are always allowed. The first
+  anonymous air check is free. A second one from the same browser, or from a new browser on the same
+  network, is blocked. A signed-in user who used it needs a subscription, and signing up doesn't give
+  another one. Active Pro is allowed. Expired or canceled Pro is blocked. Paywall off → always allowed.
+- `backend/tests/test_auth.py`: no token or a garbage, forged, expired or wrong-audience token →
+  anonymous. A valid token → the user. The anonymous ID must be a UUID. The IP is hashed.
+- `backend/tests/test_billing_webhook.py`: a bad signature → 400. A valid signed event → the profile
+  is updated. The same event twice → handled once. Checkout completed → Pro, plus the GA4 purchase.
+  `current_period_end` is read from both places Stripe puts it.
+- `backend/tests/test_paywall_endpoints.py`: a blocked air check → HTTP 402 with the right body, on
+  both endpoints, and isn't counted. A successful check is counted once. A failed one isn't. A blocked
+  check fetches no weather, airport or news data.
+- All 76 tests that existed before still pass, unchanged.
+
+**A performance fix found while testing:** the first version loaded the Supabase library on every
+page view, even with accounts switched off, adding ~66 kB of JavaScript to the home page
+(122 kB → 188 kB first load). `lib/supabase.ts` now loads it only when it's needed. The home page is
+back to 122 kB, and the sign-in code doesn't slow down the check page's first paint.
+
+**Also added:** `backend/scripts/db_migrate.py` runs the SQL migration against `DATABASE_URL`
+(the same as pasting it into the SQL Editor).
+
+---
+
+## Summary (for a founder)
+
+Trip Check was a free tool with no way to earn money. Now it has a simple subscription model.
+Anyone can try it: car checks are always free, and the first air check needs no account, so a new
+visitor sees the product working before being asked for anything. The second air check asks them to
+create a free account, then to upgrade to **Trip Check Pro for $4.99 a month**, paid through Stripe.
+Payments, cancellations and failed cards are all handled by Stripe and reported back to us
+automatically, so nobody has to update accounts by hand. Every step of that journey (check, paywall,
+sign-up, checkout, purchase) is measured in Google Analytics, so we can see where people drop out and
+what to improve. Everything is switched off until its keys are set, so none of it puts the existing
+product at risk.
+
+## Architecture
+
+```
+                         ┌──────────────────────────────┐
+  Browser ──────────────▶│ Vercel: Next.js (the page)   │──── GTM (dataLayer events) ──▶ GA4
+     │                   │  /signin /signup /account    │
+     │                   └──────────────┬───────────────┘
+     │  check stream (direct,           │ /api/* rewrite
+     │  Authorization + X-Anon-Id)      │ (/api/me, /api/billing/*)
+     ▼                                  ▼
+  ┌───────────────────────────────────────────────────┐        ┌─────────────────────────┐
+  │ Render: FastAPI                                   │◀──────▶│ Supabase                │
+  │  auth.py  (who is asking: JWT, anon ID, IP hash)  │  SQL   │  Auth (sign-up/sign-in) │
+  │  gate.py  (1 free air check, then Pro)            │        │  Postgres: profiles,    │
+  │  billing.py (Checkout, Portal, webhook, /api/me)  │        │  checks, stripe_events  │
+  └───────────▲───────────────────────┬───────────────┘        └─────────────────────────┘
+              │ signed webhook         │ Measurement Protocol
+              │ (Render URL directly)  ▼ (server-side purchase)
+           Stripe                     GA4
+```
+
+The browser signs in with Supabase directly. Supabase gives it a token (a JWT), which it sends to
+our backend, and the backend checks it.
+
+## The 3 most important technical decisions
+
+**1. The limit is enforced by the backend, not the page.**
+- *Option A, frontend only:* quick to build, but anyone can change it in the browser's developer
+  tools, or call the API directly.
+- *Option B, backend (chosen):* the server keeps the count in the database and refuses the check
+  with HTTP 402. It needed a database and identity headers, but it is the only way the paid feature
+  is really paid for. The check is stopped right after the travel mode is known, before any data is
+  fetched, so a blocked check costs us almost nothing.
+- *Trade-off:* people sharing an office network share the IP hash, so only the first of them gets
+  the free check. That's acceptable for one free check, and it's what stops "clear the browser, get
+  another free check".
+
+**2. Stripe's webhook activates the subscription, not the success page.**
+- *Option A, success URL:* simple, but anyone can type `/account?checkout=success` without paying,
+  and a real customer who closes the tab too early would never be activated.
+- *Option B, webhook (chosen):* Stripe calls our server, signed with a secret, and retries until we
+  answer. We store each event ID so a retry is never applied twice. The success page only waits
+  ("Confirming your payment…") and shows what the server says.
+- *Trade-off:* there is a short wait (usually 1–3 s) after paying, and local testing needs the Stripe
+  CLI to forward webhooks. Both are worth it for a payment state that is always right.
+
+**3. Who is asking is sent in headers, not cookies.**
+- The page is on Vercel and the check streams straight from Render (a different site), because
+  Vercel's proxy would hold back the streamed lines. Browsers block or limit cookies between
+  different sites.
+- *Chosen:* the browser sends `Authorization: Bearer <Supabase token>` and `X-Anon-Id` itself, on
+  every request. It works the same through the proxy and on the direct stream, and the existing CORS
+  setting already allows it.
+- *Trade-off:* the token lives in the browser's storage (Supabase's default), not in an `httpOnly`
+  cookie, so the page must stay free of injected scripts. React escapes everything it renders, and the
+  token only grants access to the user's own plan.
