@@ -62,8 +62,16 @@ async def health():
             "flight_lookup": flights.enabled()}
 
 
+async def _air_allowed(request: Request) -> None:
+    """Flight lookups are part of an air check: a visitor the paywall blocks gets 402, not flights."""
+    try:
+        await gate.require_fly(request)
+    except gate.PaywallBlocked as e:
+        raise HTTPException(status_code=402, detail=e.detail) from e
+
+
 @app.get("/api/flights")
-async def find_flights(origin: str = Query(..., min_length=2), destination: str = Query(..., min_length=2),
+async def find_flights(request: Request, origin: str = Query(..., min_length=2), destination: str = Query(..., min_length=2),
                        date: dt.date = Query(...), time: str = Query(..., pattern=r"^\d{2}:\d{2}$"),
                        from_home: bool = True, display_tz: str | None = Query(None, max_length=64)):
     """Scheduled flights from origin to destination that the traveller can catch (origin's local time).
@@ -72,6 +80,7 @@ async def find_flights(origin: str = Query(..., min_length=2), destination: str 
     the drive there plus CHECKIN_H. Otherwise (a connection: origin is the connection airport) the
     search starts at date+time itself.
     """
+    await _air_allowed(request)
     try:
         o, d = await asyncio.gather(geocode.resolve(origin), geocode.resolve(destination))
         o_aps, d_aps = await asyncio.gather(resolve_airports(o, origin), resolve_airports(d, destination))
@@ -94,8 +103,10 @@ async def find_flights(origin: str = Query(..., min_length=2), destination: str 
 
 
 @app.get("/api/flight")
-async def find_flight(number: str = Query(..., min_length=3, max_length=12), date: dt.date = Query(...)):
+async def find_flight(request: Request, number: str = Query(..., min_length=3, max_length=12),
+                      date: dt.date = Query(...)):
     """What a flight number flies on a date (local departure date): its legs, to fill in the form."""
+    await _air_allowed(request)
     norm = flights.normalize_number(number)
     if not norm:
         raise HTTPException(status_code=400, detail="That doesn't look like a flight number. Use one like WN 3872.")

@@ -346,3 +346,22 @@ wrong.
 - `frontend/app/account/page.tsx`: shows "Ends on <date> (cancelled: unlimited air checks until then,
   and you won't be charged again)" instead of "Renews on".
 - `backend/tests/test_billing_webhook.py`: 3 new tests (cancel date stored, older flag, renewal clears it).
+
+---
+
+## Added after deploying: the flight list is behind the paywall too
+
+**Found on the live site:** after the free air check was used, pressing *Check trip* showed the paywall,
+but the flight list above it still loaded. Each flight search is a paid AeroDataBox request, so a
+blocked visitor could keep using the flight-data quota, and the page looked half-unlocked.
+
+**Fix:** the flight lookups now follow the same rule as the check.
+- `backend/app/gate.py`: `require_fly(request)` runs the free-air-check rule without recording anything.
+- `backend/app/main.py`: `/api/flights` and `/api/flight` call it first and answer **402** before any
+  flight-data request is made.
+- `frontend/lib/types.ts`: the flight calls send the same identity headers as the check, and a 402
+  becomes a `PaywallError`.
+- `frontend/components/FlightLegs.tsx`, `TripForm.tsx`, `app/page.tsx`: a refused lookup shows the
+  paywall, and the flight list is hidden while the paywall is showing.
+- `backend/tests/test_paywall_endpoints.py`: 4 new tests (blocked → 402 and the flight API isn't called;
+  allowed → 200), on both endpoints. 115 tests pass.

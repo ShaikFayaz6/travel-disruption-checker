@@ -98,7 +98,8 @@ export default function Home() {
         <AccountLink />
       </header>
 
-      <TripForm value={input} onChange={setInput} onSubmit={run} busy={busy} />
+      <TripForm value={input} onChange={setInput} onSubmit={run} busy={busy}
+        flightsLocked={!!paywall} onPaywall={setPaywall} />
 
       {error && (
         <p className="error" role="alert">

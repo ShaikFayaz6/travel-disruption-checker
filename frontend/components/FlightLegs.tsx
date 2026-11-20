@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { findFlights, lookupFlight, normalizeFlightNumber, type FlightLeg, type FlightOption } from "@/lib/types";
+import { findFlights, lookupFlight, normalizeFlightNumber, PaywallError, type FlightLeg, type FlightOption } from "@/lib/types";
 
 const MIN_CONNECTION_MIN = 40; // search the next flight from this long after landing
 
@@ -40,6 +40,7 @@ export function FlightLegs({
   checking,
   onChange,
   onDone,
+  onPaywall,
 }: {
   origin: string;
   destination: string;
@@ -50,6 +51,7 @@ export function FlightLegs({
   checking: boolean; // the trip check is running
   onChange: (legs: FlightLeg[]) => void;
   onDone: (legs: FlightLeg[]) => void;
+  onPaywall?: (e: PaywallError) => void; // the free air check is used: show the paywall, not flights
 }) {
   const [via, setVia] = useState("");
   const [options, setOptions] = useState<FlightOption[] | null>(null);
@@ -88,7 +90,9 @@ export function FlightLegs({
       setEarliest(res.earliest);
       if (to === destination) setDestAps(res.destination_airports);
     } catch (e) {
-      if (id === latest.current) setError(e instanceof Error ? e.message : "Flight lookup failed.");
+      if (id !== latest.current) return;
+      if (e instanceof PaywallError) onPaywall?.(e);
+      else setError(e instanceof Error ? e.message : "Flight lookup failed.");
     } finally {
       if (id === latest.current) setBusy(false);
     }
@@ -211,7 +215,7 @@ export function FlightLegs({
         // defaults: the connection airport, or the nearest airport and the first departure you can make there;
         // keyed so the form resets when those change
         <ManualLeg key={`${manualFrom}|${manualDep}`} from={manualFrom} defaultDep={manualDep} added={added}
-          checking={checking} onFound={(l) => add(l, true)} onDone={done} />
+          checking={checking} onFound={(l) => add(l, true)} onDone={done} onPaywall={onPaywall} />
       )}
 
       {error && <p className="field-error">{error}</p>}
@@ -254,7 +258,8 @@ export function FlightLegs({
   );
 }
 
-function ManualLeg({ from, defaultDep, added, checking, onFound, onDone }: {
+function ManualLeg({ from, defaultDep, added, checking, onFound, onDone, onPaywall }: {
+  onPaywall?: (e: PaywallError) => void;
   from: string;
   defaultDep: string;
   added: string | null; // the flight the form added last
@@ -296,7 +301,8 @@ function ManualLeg({ from, defaultDep, added, checking, onFound, onDone }: {
       if (doneAfter.current) onDone(l);
       else onFound(l);
     } catch (e) {
-      setFound(`${e instanceof Error ? e.message : "Lookup failed."} Fill in the rest yourself.`);
+      if (e instanceof PaywallError) onPaywall?.(e);
+      else setFound(`${e instanceof Error ? e.message : "Lookup failed."} Fill in the rest yourself.`);
     } finally {
       doneAfter.current = false;
       setLooking(false);

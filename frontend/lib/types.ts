@@ -207,8 +207,9 @@ export async function findFlights(origin: string, destination: string, date: str
   const q = new URLSearchParams({ origin, destination, date, time, from_home: String(fromHome),
     ...(fromHome ? { display_tz: viewerTz() } : {}) });
   const t0 = performance.now();
-  const res = await fetch(`/api/flights?${q}`);
+  const res = await fetch(`/api/flights?${q}`, { headers: await authHeaders() }); // who is asking (paywall)
   if (!res.ok) {
+    await throwIfPaywall(res);
     let msg = `Flight lookup returned ${res.status}.`;
     try {
       const data = await res.json();
@@ -232,8 +233,9 @@ export function normalizeFlightNumber(text: string): string | null {
 /** The legs a flight number flies on a date (its local departure date). */
 export async function lookupFlight(number: string, date: string): Promise<FlightOption[]> {
   const t0 = performance.now();
-  const res = await fetch(`/api/flight?${new URLSearchParams({ number, date })}`);
+  const res = await fetch(`/api/flight?${new URLSearchParams({ number, date })}`, { headers: await authHeaders() });
   if (!res.ok) {
+    await throwIfPaywall(res);
     let msg = `Flight lookup returned ${res.status}.`;
     try {
       const data = await res.json();
@@ -254,6 +256,13 @@ export class PaywallError extends Error {
     super(message);
     this.name = "PaywallError";
   }
+}
+
+// a flight lookup the paywall refused (402): the visitor has used the free air check
+async function throwIfPaywall(res: Response): Promise<void> {
+  if (res.status !== 402) return;
+  const data = await res.json().catch(() => null);
+  throw new PaywallError(data?.detail?.code ?? "free_limit_reached", data?.detail?.message ?? "You've used your free air check.");
 }
 
 export async function assessTrip(body: {

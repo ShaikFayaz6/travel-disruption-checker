@@ -89,3 +89,38 @@ def test_failed_check_is_not_recorded(monkeypatch):
     past = BODY | {"date": (date.today() - timedelta(days=3)).isoformat()}
     assert client.post("/api/assess/stream", json=past).status_code == 400
     assert recorded == []
+
+
+FLIGHT_PATHS = ["/api/flights?origin=New%20York,%20NY&destination=SFO&date=2030-01-01&time=08:00",
+                "/api/flight?number=WN3872&date=2030-01-01"]
+
+
+@pytest.mark.parametrize("path", FLIGHT_PATHS)
+def test_blocked_visitor_gets_402_not_flights(monkeypatch, path):
+    async def decide(user, anon_id, ip_hash, mode):
+        assert mode == "fly"
+        return gate.Decision(allowed=False, code="free_limit_reached")
+
+    async def no_lookup(*a, **kw):
+        raise AssertionError("the flight-data API must not be called for a blocked visitor")
+
+    monkeypatch.setattr(gate, "decide", decide)
+    monkeypatch.setattr(main.flights, "search", no_lookup)
+    monkeypatch.setattr(main.flights, "by_number", no_lookup)
+    r = client.get(path)
+    assert r.status_code == 402
+    assert r.json()["detail"]["code"] == "free_limit_reached"
+
+
+@pytest.mark.parametrize("path", FLIGHT_PATHS)
+def test_allowed_visitor_gets_flights(monkeypatch, path):
+    async def decide(user, anon_id, ip_hash, mode):
+        return gate.Decision(allowed=True, uses_free=True)
+
+    async def found(*a, **kw):
+        return []
+
+    monkeypatch.setattr(gate, "decide", decide)
+    monkeypatch.setattr(main.flights, "search", found)
+    monkeypatch.setattr(main.flights, "by_number", found)
+    assert client.get(path).status_code == 200
