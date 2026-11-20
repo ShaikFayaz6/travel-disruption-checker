@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from . import ai, db, gate, http, perf, timing
+from . import ai, billing, db, gate, http, perf, timing
 from .assess import TripError, valid_tz, resolve_airports, assess, assess_stream
 from .timeutil import tzinfo_for
 from .config import CORS_ORIGINS, GEMINI_MODEL
@@ -39,6 +39,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Travel Disruption Checker", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+app.include_router(billing.router)  # accounts and Trip Check Pro: /api/me, /api/billing/*, /api/stripe/webhook
 
 TRACED = {"/api/assess", "/api/flights", "/api/flight"}  # not /api/places: it runs on every keystroke
 

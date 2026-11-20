@@ -136,3 +136,37 @@ The server holds the count, so the limit is real, and the paid feature can't be 
   getting unlimited free checks by clearing their browser.
 - `Authorization` and `X-Anon-Id` work cross-origin as they are: the existing CORS setting
   (`allow_headers=["*"]`) answers the browser's pre-flight request with exactly the headers it asks for.
+
+---
+
+## Phase 4: Stripe subscriptions (the webhook is the source of truth)
+
+**What:** signed-in users can buy **Trip Check Pro ($4.99/month)** with Stripe Checkout, manage or
+cancel it in Stripe's Customer Portal, and get unlimited air checks while it is active.
+
+**Files:**
+- `backend/scripts/stripe_setup.py` (new): creates the product and the monthly price in Stripe test
+  mode, and prints the price ID. Running it twice doesn't make duplicates (it finds the price by its
+  `lookup_key`). It refuses to run with a live key.
+- `backend/app/billing.py` (new), mounted with one `include_router` line in `main.py`:
+  - `POST /api/billing/checkout`: finds or creates the user's Stripe customer, then creates a Checkout
+    Session in subscription mode and returns its URL. The browser just goes to that URL: no Stripe
+    JavaScript needed on our page. The user's ID travels with the session (`client_reference_id`
+    and metadata), so the webhook knows who paid.
+  - `POST /api/billing/portal`: a link to Stripe's Customer Portal (change card, invoices, cancel).
+  - `POST /api/stripe/webhook`: Stripe tells us what happened. We check the signature, skip events
+    we've already handled, and update the user's profile: `checkout.session.completed` → Pro,
+    `customer.subscription.updated` / `.deleted` → new status (back to free when canceled or unpaid),
+    `invoice.payment_failed` → `past_due`.
+  - `GET /api/me`: the signed-in user's plan, status, renewal date and whether the free air check is used.
+- `backend/app/ga4.py` (new): sends the `purchase` event to GA4 from the server (see Phase 5).
+- `frontend/components/Paywall.tsx`: the **Upgrade** button calls the checkout route and redirects.
+- `frontend/app/account/page.tsx`: **Manage billing** opens the portal. After Checkout it shows
+  "Confirming your payment…" and asks the backend again every 2 s for up to 20 s.
+- `docs/STRIPE_TESTING.md` (new): how to test locally with the Stripe CLI and test cards, and how to
+  register the production webhook on Render.
+
+**Why the webhook, not the success page:** the success page is just a URL. Anyone can type
+`/account?checkout=success` without paying, and a real payer might close the tab before it loads.
+Stripe's webhook is signed (we can prove it came from Stripe) and is retried until we answer, so it
+is the only reliable signal that money moved.
