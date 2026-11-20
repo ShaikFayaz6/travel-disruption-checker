@@ -90,3 +90,49 @@ switched on). The backend can tell who is asking.
 **Why headers instead of cookies:** in production the page is on Vercel and the check is streamed
 straight from Render (a different site). Browsers block or limit cookies between different sites, but
 they always send headers that the page adds itself. So the browser sends who it is with each request.
+
+---
+
+## Phase 3: The free air-check gate (enforced by the backend)
+
+**What:** every visitor gets **one free air check**. After that, an air check needs a free account
+*and* Trip Check Pro. Car checks are always free, with no account.
+
+**How it decides** (`backend/app/gate.py`, new):
+1. Paywall switched off, or a car check → allowed.
+2. Signed in with an active Pro subscription whose paid period hasn't ended → allowed.
+3. Has the free air check not been used yet → allowed (this is their free one). "Not used" means none
+   of these has an air check in the `checks` table: this browser's anonymous ID, this network's IP
+   hash, or (if signed in) the account. So clearing the browser doesn't give a second free check,
+   and neither does signing up.
+4. Otherwise → blocked with HTTP 402 and a code: `free_limit_reached` (not signed in: "create a free
+   account") or `subscription_required` (signed in: "upgrade").
+
+**When a check counts:** only after its first answer was produced. A check that fails (say, a
+place that doesn't exist) or is blocked doesn't use up the free check. Car checks are recorded too,
+for usage numbers.
+
+**Changes to existing files (kept small):**
+- `backend/app/assess.py`: `assess_stream()` and `assess()` take an optional `on_mode` callback. It is
+  called as soon as the travel mode is known (an "auto" trip over 300 miles becomes "fly"), and
+  *before* any weather, airport or news data is fetched. So a blocked check costs almost nothing,
+  and we don't repeat the place lookup to find out the mode. Callers that don't pass it (all the
+  existing tests) work exactly as before.
+- `backend/app/main.py`: both check endpoints pass the gate's callback, turn `PaywallBlocked` into
+  HTTP 402, and record the check after the first answer.
+- `frontend/lib/types.ts`: `assessTrip()` sends the identity headers, and throws a new `PaywallError`
+  on HTTP 402.
+- `frontend/app/page.tsx`: about 10 lines that show the new `components/Paywall.tsx` card instead
+  of an error.
+
+**Why on the backend:** anything the browser decides, a user can change in the developer tools.
+The server holds the count, so the limit is real, and the paid feature can't be unlocked from the page.
+
+**Decisions noted:**
+- If the database is down, the gate *allows* the check and logs the error. A paying customer should
+  never be locked out because of our outage, and one extra free check costs very little.
+- Several people behind the same office network share an IP hash, so only the first of them gets the
+  free air check. That's acceptable for 1 free check (they can sign up), and it is what stops someone
+  getting unlimited free checks by clearing their browser.
+- `Authorization` and `X-Anon-Id` work cross-origin as they are: the existing CORS setting
+  (`allow_headers=["*"]`) answers the browser's pre-flight request with exactly the headers it asks for.

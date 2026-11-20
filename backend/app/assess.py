@@ -5,7 +5,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Awaitable
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -279,7 +279,8 @@ def _timing(plan: timing.Plan, mode: str, origin: Place, dest: Place, points: li
                   from_flights=bool(legs_text), legs=legs_text or [])
 
 
-async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
+async def assess_stream(req: AssessRequest,
+                        on_mode: Callable[[str], Awaitable[None]] | None = None) -> AsyncIterator[AssessResponse]:
     """Yields the assessment: with the AI on, first a rules-only one (ai_pending), then the AI one."""
     tr = _Tracker()
     legs = req.legs or []
@@ -314,6 +315,8 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
 
     dist = airports.haversine_miles(origin.lat, origin.lon, dest.lat, dest.lon)
     mode = req.mode if req.mode != "auto" else ("drive" if dist < DRIVE_THRESHOLD_MILES else "fly")
+    if on_mode:  # e.g. the paywall: it may stop the check here, before any data source is fetched
+        await on_mode(mode)
 
     origin_aps, dest_aps, conn_aps = [], [], []  # conn_aps: connection airports, in order
     leg_utc: list[tuple] = []
@@ -685,9 +688,9 @@ async def assess_stream(req: AssessRequest) -> AsyncIterator[AssessResponse]:
     yield await finish(use_ai=ai.enabled())
 
 
-async def assess(req: AssessRequest) -> AssessResponse:
+async def assess(req: AssessRequest, on_mode: Callable[[str], Awaitable[None]] | None = None) -> AssessResponse:
     """The finished assessment (the last of assess_stream's answers)."""
     out = None
-    async for out in assess_stream(req):
+    async for out in assess_stream(req, on_mode):
         pass
     return out

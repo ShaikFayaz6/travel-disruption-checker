@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { AccountLink } from "@/components/AccountLink";
 import { Evidence } from "@/components/Evidence";
 import { Findings } from "@/components/Findings";
+import { Paywall } from "@/components/Paywall";
 import { RouteStrip } from "@/components/RouteStrip";
 import { SideNotes } from "@/components/SideNotes";
 import { TripForm, TripInput, isoDate } from "@/components/TripForm";
-import { assessTrip, type AssessResponse } from "@/lib/types";
+import { assessTrip, PaywallError, type AssessResponse } from "@/lib/types";
 
 export default function Home() {
   const [input, setInput] = useState<TripInput>({ origin: "", destination: "", date: "", time: "", mode: "fly", legs: [] });
@@ -16,9 +17,15 @@ export default function Home() {
   const [data, setData] = useState<AssessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
+  const [paywall, setPaywall] = useState<PaywallError | null>(null); // an air check the backend refused (402)
 
   // date default is set on the client to avoid a server/client timezone mismatch
   useEffect(() => setInput((v) => (v.date ? v : { ...v, date: isoDate(1) })), []);
+  // back from sign-up/sign-in via the paywall: show the upgrade offer again
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("upgrade") === "1")
+      setPaywall(new PaywallError("subscription_required", "Upgrade for unlimited air checks."));
+  }, []);
 
   const runId = useRef(0); // a newer check replaces an older one still streaming its AI answer
   const lastRun = useRef<TripInput | null>(null); // what the result on screen was checked for
@@ -28,6 +35,7 @@ export default function Home() {
     lastRun.current = v;
     setBusy(true);
     setError(null);
+    setPaywall(null);
     setPending(v);
     setData(null);
     setHighlight(null);
@@ -52,7 +60,8 @@ export default function Home() {
       });
     } catch (e) {
       if (id !== runId.current) return;
-      if (first) setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (e instanceof PaywallError) setPaywall(e);
+      else if (first) setError(e instanceof Error ? e.message : "Something went wrong.");
       else setData((d) => (d ? { ...d, ai_pending: false } : d)); // keep the first answer
     } finally {
       if (id === runId.current) {
@@ -93,9 +102,11 @@ export default function Home() {
         </p>
       )}
 
+      {paywall && <Paywall code={paywall.code} message={paywall.message} />}
+
       {pending && <RouteStrip pending={{ origin: pending.origin, destination: pending.destination }} />}
 
-      {!pending && !data && !error && (
+      {!pending && !data && !error && !paywall && (
         <section className="empty">
           <p>Enter where you&apos;re leaving from, where you&apos;re going, and when you depart.</p>
           <p className="quiet">
