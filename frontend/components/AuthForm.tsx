@@ -86,6 +86,11 @@ export function AuthForm({ kind }: { kind: Kind }) {
             onChange={(e) => setPassword(e.target.value)}
           />
           {kind === "signup" && <span className="field-hint">At least 6 characters.</span>}
+          {kind === "signin" && (
+            <a className="field-hint" href="/forgot-password">
+              Forgot your password?
+            </a>
+          )}
         </label>
         {error && (
           <p className="error" role="alert">
@@ -103,7 +108,7 @@ export function AuthForm({ kind }: { kind: Kind }) {
       </form>
       {googleAuthEnabled && (
         <button type="button" className="secondary" onClick={google}>
-          Sign in with Google
+          Continue with Google
         </button>
       )}
       <p className="quiet">

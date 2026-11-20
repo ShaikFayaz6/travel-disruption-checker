@@ -304,3 +304,24 @@ our backend, and the backend checks it.
 - *Trade-off:* the token lives in the browser's storage (Supabase's default), not in an `httpOnly`
   cookie, so the page must stay free of injected scripts. React escapes everything it renders, and the
   token only grants access to the user's own plan.
+
+---
+
+## Added after testing: password reset and "Continue with Google"
+
+**What:** users who forget their password can reset it by email, and the Google button now reads
+"Continue with Google" because the same button signs people up *or* in.
+
+**Files:**
+- `frontend/app/forgot-password/page.tsx` (new): asks for the email and calls Supabase's
+  `resetPasswordForEmail()`. It always shows the same message, whether or not the email has an
+  account, so the form can't be used to find out who has signed up.
+- `frontend/app/reset-password/page.tsx` (new): the email link opens this page. Supabase reads the
+  token in the link and signs the user in for this purpose only, then `updateUser({ password })`
+  saves the new password. An old or broken link gets "This reset link is invalid or has expired".
+- `frontend/components/AuthForm.tsx`: a "Forgot your password?" link under the password field on the
+  sign-in page, and the Google button's new label.
+- `frontend/components/AccountLink.tsx`: if Supabase sends a reset link to the home page (when
+  `/reset-password` isn't in its allowed redirect URLs), the home page passes it on to the reset page.
+- `docs/AUTH_SETUP.md` (new): the Supabase settings, and how to connect Google (a Google Cloud OAuth
+  client + the Supabase Google provider).

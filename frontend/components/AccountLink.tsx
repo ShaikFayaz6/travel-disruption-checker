@@ -10,6 +10,12 @@ import { accountsEnabled } from "@/lib/supabase";
 export function AccountLink() {
   const { session, ready } = useSession();
 
+  // a password-reset link that Supabase sent to the home page (when /reset-password isn't in its
+  // allowed redirect URLs): pass it on, with its token, to the page that sets the new password
+  useEffect(() => {
+    if (window.location.hash.includes("type=recovery")) window.location.replace(`/reset-password${window.location.hash}`);
+  }, []);
+
   // back from "Sign in with Google": count the sign-up/login once
   useEffect(() => {
     if (!session) return;
