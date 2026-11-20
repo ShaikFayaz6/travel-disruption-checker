@@ -8,6 +8,7 @@ import { Paywall } from "@/components/Paywall";
 import { RouteStrip } from "@/components/RouteStrip";
 import { SideNotes } from "@/components/SideNotes";
 import { TripForm, TripInput, isoDate } from "@/components/TripForm";
+import { track } from "@/lib/analytics";
 import { assessTrip, PaywallError, type AssessResponse } from "@/lib/types";
 
 export default function Home() {
@@ -40,6 +41,8 @@ export default function Home() {
     setData(null);
     setHighlight(null);
     let first = true;
+    const t0 = performance.now();
+    track("check_started", { mode: v.mode, has_flights: v.legs.length > 0 });
     try {
       // progressive: the first answer (rules only) shows in ~2 s, the AI's replaces it when ready
       await assessTrip(v, (res) => {
@@ -49,6 +52,7 @@ export default function Home() {
         setPending(null);
         if (!first) return;
         first = false;
+        track("check_completed", { mode: res.mode, risk_level: res.risk_level, ms_to_first_answer: Math.round(performance.now() - t0) });
         // with chosen flights, the time to leave home is worked out: show it in the form, rounded down
         // to the quarter hour the dropdown offers (a few minutes early is the safe side)
         const leave = res.timing?.leave_local;

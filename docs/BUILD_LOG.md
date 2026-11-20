@@ -170,3 +170,30 @@ cancel it in Stripe's Customer Portal, and get unlimited air checks while it is 
 `/account?checkout=success` without paying, and a real payer might close the tab before it loads.
 Stripe's webhook is signed (we can prove it came from Stripe) and is retried until we answer, so it
 is the only reliable signal that money moved.
+
+---
+
+## Phase 5: GA4 + Google Tag Manager
+
+**What:** analytics for the whole sign-up and payment journey, so we can see where people drop out.
+
+**Files:**
+- `frontend/app/layout.tsx`: 2 lines that load Google Tag Manager when `NEXT_PUBLIC_GTM_ID` is set,
+  using Next.js's own `<GoogleTagManager>` component. It loads after the page becomes interactive,
+  so it doesn't slow down the first paint (LCP, a Core Web Vital).
+- `frontend/lib/analytics.ts` (added in Phase 2): `track(event, params)` pushes an event to GTM's
+  `dataLayer`. It does nothing when GTM is off. It never sends personal data (no emails, no addresses).
+- Where each event fires:
+  - `check_started` and `check_completed` (with how long the first answer took): `app/page.tsx` (3 lines).
+  - `paywall_shown`, `begin_checkout`: `components/Paywall.tsx`.
+  - `sign_up`, `login`: `components/AuthForm.tsx`. For Google sign-in, `components/AccountLink.tsx`
+    sends it once the user comes back from Google.
+  - `purchase`: **from the server**, `backend/app/ga4.py`, called by the Stripe webhook. It uses GA4's
+    Measurement Protocol, a 3-second timeout, and never blocks or breaks the webhook.
+- `docs/GTM_SETUP.md` (new): every click in GTM and GA4, how to check it in GTM Preview and GA4
+  DebugView, and how to build the funnel check → paywall → sign-up → checkout → purchase.
+
+**Why the purchase is server-side:** the browser can miss it (tab closed, ad blocker) or fake it
+(open the success page without paying). The webhook only runs when Stripe has the money, so the
+revenue number in GA4 matches Stripe. The browser's GA4 client ID is passed through Checkout, so the
+purchase still joins the same visitor's journey.
