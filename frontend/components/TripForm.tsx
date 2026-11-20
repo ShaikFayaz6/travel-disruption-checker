@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { viewerTz, type FlightLeg, type Mode } from "@/lib/types";
+import { viewerTz, type FlightLeg, type Mode, type PaywallError } from "@/lib/types";
 import { FlightLegs } from "./FlightLegs";
 import { PlaceInput } from "./PlaceInput";
 
@@ -89,11 +89,15 @@ export function TripForm({
   onChange,
   onSubmit,
   busy,
+  flightsLocked = false,
+  onPaywall,
 }: {
   value: TripInput;
   onChange: (v: TripInput) => void;
   onSubmit: (v: TripInput) => void;
   busy: boolean;
+  flightsLocked?: boolean; // the paywall is showing: no flight list
+  onPaywall?: (e: PaywallError) => void; // a flight lookup was refused (free air check used)
 }) {
   // A place counts only once it has been picked from the suggestion list.
   type PlaceKey = "origin" | "destination";
@@ -203,8 +207,9 @@ export function TripForm({
           {busy ? "Checking…" : "Check trip"}
         </button>
       </form>
-      {value.mode === "fly" && (
+      {value.mode === "fly" && !flightsLocked && (
         <FlightLegs
+          onPaywall={onPaywall}
           origin={value.origin}
           destination={value.destination}
           date={value.date}

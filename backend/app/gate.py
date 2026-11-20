@@ -104,5 +104,11 @@ def checker(who: Who) -> Callable[[str], Awaitable[None]]:
     return on_mode
 
 
+async def require_fly(request: Request) -> None:
+    """For the flight lookups: raise PaywallBlocked if this visitor can't run an air check, so a
+    blocked visitor neither sees flights nor uses up the paid flight-data quota. Records nothing."""
+    await checker(await identify(request))("fly")
+
+
 async def record_for(who: Who, mode: str, req) -> None:
     await record(who.user, who.anon_id, who.ip_hash, mode, req)
