@@ -54,3 +54,39 @@ anyone can see what to configure without reading the code.
   connection.
 - **Store a hash of the IP, never the IP itself.** We need to recognise the same network again (to
   stop someone clearing their browser to get another free check), but we don't need to know the address.
+
+---
+
+## Phase 2: Sign-up and sign-in
+
+**What:** people can create an account and sign in with email and password (and with Google, if
+switched on). The backend can tell who is asking.
+
+**Backend files:**
+- `backend/app/auth.py` (new):
+  - `current_user()` reads the `Authorization: Bearer <token>` header. The token is a JWT that Supabase
+    gave the browser at sign-in. We check its signature with Supabase's public keys (JWKS), or with the
+    older shared secret if `SUPABASE_JWT_SECRET` is set, and that it was made for signed-in users
+    (`aud = "authenticated"`). A missing, expired or fake token just means "anonymous". It never
+    causes an error, so visitors without an account keep working.
+  - `anon_id()` reads the `X-Anon-Id` header: a random ID the browser keeps for itself.
+  - `ip_hash()` takes the visitor's IP (the first one in `X-Forwarded-For`, because Render and Vercel
+    sit in front of us), adds a secret salt and hashes it with SHA-256. The raw IP is never stored.
+
+**Frontend files (all new, except one line in `page.tsx`):**
+- `lib/supabase.ts`: the Supabase client, or `null` when the `NEXT_PUBLIC_SUPABASE_*` settings are empty.
+- `lib/anon.ts`: `getAnonId()` makes a random ID once and keeps it in `localStorage` (`tc_anon_id`).
+- `lib/session.ts`: `useSession()` (who is signed in, updated live), `authHeaders()` (the two headers
+  above) and `apiPost()` (calls the backend as the signed-in user).
+- `lib/analytics.ts`: `track()`, used from Phase 5 on (it does nothing until GTM is set up).
+- `components/AuthForm.tsx` with `app/signin/page.tsx` and `app/signup/page.tsx`: email + password
+  forms with labelled inputs and errors read out by screen readers (`role="alert"`). If the visitor came
+  from the paywall, they go back to the upgrade offer afterwards (`/?upgrade=1`).
+- `app/account/page.tsx`: email, plan, renewal date, "Manage billing" and "Sign out".
+- `components/AccountLink.tsx`: "Sign in", or your email, in the top-right corner. It shows nothing
+  when accounts aren't configured. `app/page.tsx` got one line to show it.
+- `app/globals.css`: a few new classes at the end, for these pages and the paywall card.
+
+**Why headers instead of cookies:** in production the page is on Vercel and the check is streamed
+straight from Render (a different site). Browsers block or limit cookies between different sites, but
+they always send headers that the page adds itself. So the browser sends who it is with each request.

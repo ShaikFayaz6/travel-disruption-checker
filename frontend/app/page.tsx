@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AccountLink } from "@/components/AccountLink";
 import { Evidence } from "@/components/Evidence";
 import { Findings } from "@/components/Findings";
 import { RouteStrip } from "@/components/RouteStrip";
@@ -81,6 +82,7 @@ export default function Home() {
       <header className="masthead">
         <p className="brand">Trip Check</p>
         <p className="tagline">Will anything get in the way of this trip? Weather, airport status and news, checked in one place.</p>
+        <AccountLink />
       </header>
 
       <TripForm value={input} onChange={setInput} onSubmit={run} busy={busy} />
