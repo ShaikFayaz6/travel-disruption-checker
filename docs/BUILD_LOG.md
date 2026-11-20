@@ -24,3 +24,33 @@ works exactly as before: no sign-in link, no paywall, no tracking.
 
 **Why:** each later phase needs these, and keeping the setting names in the example files means
 anyone can see what to configure without reading the code.
+
+---
+
+## Phase 1: Database (Supabase Postgres)
+
+**What:** three tables in Supabase's Postgres database, and a small backend module that talks to it.
+
+**Files:**
+- `supabase/migrations/001_accounts_paywall.sql`: creates the tables. You paste it into Supabase's
+  SQL Editor once (see `docs/DB_SETUP.md`).
+  - `profiles`: one row per user: their plan (`free` or `pro`) and their Stripe subscription status.
+    A database trigger creates it automatically when someone signs up.
+  - `checks`: one row per check that produced an answer: air or car, the cities, the date, and who ran
+    it. This is how we know whether someone has used their free air check.
+  - `stripe_events`: the ID of every payment event Stripe sent us, so each is handled only once.
+  - Row Level Security is switched on, so a browser can only ever read its own profile.
+- `backend/app/db.py` (new): one function per database action (`get_profile`, `fly_check_used`,
+  `insert_check`, `update_subscription`, ...). When `DATABASE_URL` is empty, every function does nothing.
+- `backend/app/config.py`: reads the new settings (`DATABASE_URL`, `SUPABASE_URL`, Stripe and GA4 keys)
+  and works out the switches `PAYWALL_ENABLED` and `BILLING_ENABLED`.
+- `backend/app/main.py`: 3 lines that open the database connection pool at startup and close it at shutdown.
+
+**Why these choices:**
+- **Supabase** gives us a real Postgres database *and* user accounts in one free service. Render's own
+  disk is wiped on every deploy, so we can't keep data on the server itself.
+- **`asyncpg`** is a fast Postgres driver that works with FastAPI's async code. It is set up with
+  `statement_cache_size=0` because Supabase's connection pooler can send each query to a different
+  connection.
+- **Store a hash of the IP, never the IP itself.** We need to recognise the same network again (to
+  stop someone clearing their browser to get another free check), but we don't need to know the address.

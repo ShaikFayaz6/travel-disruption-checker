@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from . import ai, http, perf, timing
+from . import ai, db, http, perf, timing
 from .assess import TripError, valid_tz, resolve_airports, assess, assess_stream
 from .timeutil import tzinfo_for
 from .config import CORS_ORIGINS, GEMINI_MODEL
@@ -30,8 +30,10 @@ async def _warm() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     warm = asyncio.create_task(_warm())
+    await db.init()  # accounts database: does nothing unless DATABASE_URL is set
     yield
     warm.cancel()
+    await db.close()
     await http.close()
 
 
